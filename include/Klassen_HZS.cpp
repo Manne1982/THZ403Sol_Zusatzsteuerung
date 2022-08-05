@@ -1,5 +1,5 @@
 #include "Klassen_HZS.h"
-#define BGTDEBUG
+//#define BGTDEBUG
 
 TSensor::TSensor(OneWire * ds, byte * Address):
 TempMin(-55.0),
@@ -174,6 +174,22 @@ float TSensor::getTempC()
         Serial.print(((float)raw / 16.0));
         Serial.print(" Celsius, ");
     #endif
-
+    NewValue = false;
     return (float)raw / 16.0;
+}
+
+void TSensor::setName(String NewName)
+{
+    if(NewName.length() < 15)
+    {
+        strcpy(Name, NewName.c_str());
+    }
+}
+String TSensor::getName()
+{
+    return Name;
+}
+bool TSensor::NewValueAvailable()
+{
+    return NewValue;
 }

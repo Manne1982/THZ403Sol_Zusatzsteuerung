@@ -14,6 +14,8 @@ class TSensor
         bool loop();            //Have to start periotly to find out if there are a new measured value available if new Value available --> true
         bool NewValueAvailable();   //If a new Value available that was not fetched --> true
         float getTempC();           //Get saved Temperature as degree Celcius
+        void setName(String newName);
+        String getName();
         ~TSensor();
     private:
         byte * data;
