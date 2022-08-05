@@ -1,13 +1,28 @@
 #include <Arduino.h>
 #include <OneWire.h>
 #include "Klassen_HZS.h"
-// OneWire DS18S20, DS18B20, DS1822 Temperature Example
-//
-// http://www.pjrc.com/teensy/td_libs_OneWire.html
-//
-// The DallasTemperature library can do all this work for you!
-// https://github.com/milesburton/Arduino-Temperature-Control-Library
+#include <EthernetENC.h>
 
+EthernetClient client;
+
+void setup(void) {
+  Serial.begin(9600);
+  uint8_t mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5};
+  delay(5000);
+  if(Ethernet.begin(mac)) //Configure IP address via DHCP
+  {
+    Serial.println(Ethernet.localIP());
+    Serial.println(Ethernet.gatewayIP());
+    Serial.println(Ethernet.subnetMask());
+  }
+}
+
+void loop(void) {
+  Serial.println(Ethernet.localIP());
+  delay(5000);
+}
+
+/*
 OneWire  ds(D2);  // on pin 10 (a 4.7K resistor is necessary)
 TSensor * SensorList[10];
 u_int8_t SensorListCount = 0;
@@ -53,3 +68,4 @@ void loop(void) {
   }
 
 }
+*/
