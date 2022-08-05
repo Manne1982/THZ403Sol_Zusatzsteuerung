@@ -2,8 +2,18 @@
 #include <OneWire.h>
 #include "Klassen_HZS.h"
 #include <EthernetENC.h>
+//MQTT
+#include <PubSubClient.h>
 
+//MQTT Variablen
 EthernetClient client;
+PubSubClient MQTTclient(client);
+
+unsigned long Break_10s = 0;
+
+bool MQTTinit();
+void MQTT_callback(char* topic, byte* payload, unsigned int length);
+
 
 void setup(void) {
   Serial.begin(9600);
@@ -15,12 +25,53 @@ void setup(void) {
     Serial.println(Ethernet.gatewayIP());
     Serial.println(Ethernet.subnetMask());
   }
+  //MQTT
+  MQTTinit();
+
 }
 
 void loop(void) {
-  Serial.println(Ethernet.localIP());
-  delay(5000);
+  
+  if(millis()>Break_10s)
+  {
+    Break_10s = millis() + 10000;
+    Serial.println(Ethernet.localIP());
+  }
+  MQTTclient.loop();
 }
+
+bool MQTTinit()
+{
+  if(MQTTclient.connected())
+    MQTTclient.disconnect();
+  IPAddress IPTemp;
+  IPTemp.fromString("192.168.63.102");
+  MQTTclient.setServer(IPTemp, 1883);
+  MQTTclient.setCallback(MQTT_callback);
+  unsigned long int StartTime = millis();
+  while ((millis() < (StartTime + 5000)&&(!MQTTclient.connect("A0:A1:A2:A3:A4:A5", "mrmqtt", "ReDam")))){
+    delay(200);
+  }
+  if(MQTTclient.connected()){
+    Serial.println("MQTTclient connected");
+    MQTTclient.subscribe("/Test");
+    return true;
+  }
+  else
+    return false;
+}
+//MQTT-Funktionen
+void MQTT_callback(char* topic, byte* payload, unsigned int length)
+{
+  char payloadTemp[length + 2];
+  for (unsigned int i = 0; i < length; i++){
+    payloadTemp[i] = (char) payload[i];
+  }
+  payloadTemp[length] = 0;
+  Serial.println(payloadTemp);
+}
+
+
 
 /*
 OneWire  ds(D2);  // on pin 10 (a 4.7K resistor is necessary)
