@@ -1,8 +1,13 @@
 #include <Arduino.h>
+//Für Temperatur Sensoren
 #include <OneWire.h>
+//Für Wifi-Verbindung notwendig
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
 //für Webserver und Ethernet notwendig
 #include <EthernetENC.h>
-#include <AsyncWebServer_Ethernet.h>
+//für Webserver notwendig
+#include <ESPAsyncWebServer.h>
 //MQTT
 #include <PubSubClient.h>
 //für Uhrzeitabruf notwendig
@@ -15,15 +20,15 @@
 #include "HTML_Var.h"
 #include "Klassen_HZS.h"
 
-//MQTT Variablen
-EthernetClient client;
-PubSubClient MQTTclient(client);
-
+#define BGTDEBUG 1
 
 //Funktionsdefinitionen
+void WiFi_Start_STA(char *ssid_sta, char *password_sta);
+void WiFi_Start_AP();
+bool WIFIConnectionCheck(bool with_reconnect);
 void notFound(AsyncWebServerRequest *request);
 void EinstSpeichern();
-void EinstLaden();
+bool EinstLaden();
 char ResetVarLesen();
 void ResetVarSpeichern(char Count);
 bool MQTTinit();  //Wenn verbunden Rückgabewert true
@@ -35,52 +40,74 @@ String IntToStr(uint32_t _var);
 
 //Projektvariablen
 NWConfig varConfig;
+char EthernetMAC[] = "A0:A1:A2:A3:A4:A5";         //For Ethernet connection (MQTT)
+uint8_t mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5}; //For Ethernet connection
 unsigned long Break_h = 0;
 unsigned long Break_10s = 0;
 //unsigned long Break_s = 0;
 
 //Erstellen Serverelement
-EthernetServer * pEthernetServer;
-AsyncWebServer * server;
-
+AsyncWebServer * server = 0;
 //Uhrzeit Variablen
-EthernetUDP ntpUDP;
-NTPClient *timeClient;
+UDP * ntpUDP = 0;
+NTPClient * timeClient = 0;
+//MQTT Variablen
+EthernetClient * e_client = 0;
+WiFiClient * wifiClient;
+PubSubClient * MQTTclient = 0;
 
 
 void setup(void) {
-  uint8_t mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5};
+  wifiClient = new WiFiClient;
   Serial.begin(9600);
   delay(3000);
-/*  char ResetCount = 0;
+  uint8_t ResetCount = 0;
   ResetCount = ResetVarLesen();
-  if((ResetCount < 0)||(ResetCount > 5))  //Prüfen ob Wert Plausibel, wenn nicht rücksetzen
+  if(ResetCount > 5)  //Prüfen ob Wert Plausibel, wenn nicht rücksetzen
     ResetCount = 0;
   //ResetCount++;
   ResetVarSpeichern(ResetCount);
+  //WLAN starten
   delay(5000);
+
   if (ResetCount < 5) //Wenn nicht 5 mal in den ersten 5 Sekunden der Startvorgang abgebrochen wurde
-    EinstLaden();
-  ResetVarSpeichern(0);*/
-  
-  Ethernet.init(D0);
-  if(Ethernet.begin(mac)) //Configure IP address via DHCP
+    if(!EinstLaden()) //If failure than standard config will be saved
+      EinstSpeichern();
+  ResetVarSpeichern(0);
+  if (varConfig.NW_Flags & NW_WiFi_AP)
   {
-    #ifdef BGTDEBUG
-      Serial.println(Ethernet.localIP());
-      Serial.println(Ethernet.gatewayIP());
-      Serial.println(Ethernet.subnetMask());
-    #endif
-    //MQTT
-    MQTTinit();
+    WiFi_Start_AP();
   }
-  
+  else
+  {
+    WiFi_Start_STA(varConfig.WLAN_SSID, varConfig.WLAN_Password);
+  }
+  if(varConfig.NW_Flags & NW_EthernetActive)  //If Ethernet active than MQTT should connected over Ethernet
+  {
+    Ethernet.init(D0);
+    if(Ethernet.begin(mac)) //Configure IP address via DHCP
+    {
+      #ifdef BGTDEBUG
+        Serial.println(Ethernet.localIP());
+        Serial.println(Ethernet.gatewayIP());
+        Serial.println(Ethernet.subnetMask());
+      #endif
+    }
+    e_client = new EthernetClient;
+    MQTTclient = new PubSubClient(*e_client);
+    ntpUDP = new EthernetUDP;
+  }
+  else
+  {
+    MQTTclient = new PubSubClient(*wifiClient);
+    ntpUDP = new WiFiUDP;
+  }
   server = new AsyncWebServer(80);
   //Zeitserver Einstellungen
   if (strlen(varConfig.NW_NTPServer))
-    timeClient = new NTPClient(ntpUDP, (const char *)varConfig.NW_NTPServer);
+    timeClient = new NTPClient(*ntpUDP, (const char *)varConfig.NW_NTPServer);
   else
-    timeClient = new NTPClient(ntpUDP, "fritz.box");
+    timeClient = new NTPClient(*ntpUDP, "fritz.box");
   delay(1000);
   timeClient->begin();
   timeClient->setTimeOffset(varConfig.NW_NTPOffset * 3600);
@@ -94,6 +121,8 @@ void setup(void) {
     ArduinoOTA.handle();
     delay(1000);
   }
+  //MQTT
+  MQTTinit();
   //Webserver
   server->onNotFound(notFound);
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -115,7 +144,7 @@ void setup(void) {
                 else
                   pntSelected[i] = (char *)varSelected[0].c_str();
               sprintf(Header_neu, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear);
-              sprintf(Body_neu, html_NWconfig, Un_Checked[(short)varConfig.WLAN_AP_Aktiv].c_str(), varConfig.WLAN_SSID, Un_Checked[(short)varConfig.NW_StatischeIP].c_str(), varConfig.NW_IPAdresse, varConfig.NW_NetzName, varConfig.NW_SubMask, varConfig.NW_Gateway, varConfig.NW_DNS, varConfig.NW_NTPServer, pntSelected[0], pntSelected[1], pntSelected[2], pntSelected[3], pntSelected[4], varConfig.MQTT_Server, varConfig.MQTT_Port, varConfig.MQTT_Username, varConfig.MQTT_rootpath);
+              sprintf(Body_neu, html_NWconfig, Un_Checked[varConfig.NW_Flags & NW_WiFi_AP].c_str(), varConfig.WLAN_SSID, Un_Checked[(varConfig.NW_Flags & NW_StaticIP)/NW_StaticIP].c_str(), varConfig.NW_IPAdresse, varConfig.NW_NetzName, varConfig.NW_SubMask, varConfig.NW_Gateway, varConfig.NW_DNS, varConfig.NW_NTPServer, pntSelected[0], pntSelected[1], pntSelected[2], pntSelected[3], pntSelected[4], varConfig.MQTT_Server, varConfig.MQTT_Port, varConfig.MQTT_Username, varConfig.MQTT_rootpath);
               sprintf(HTMLString, "%s%s", Header_neu, Body_neu);
               request->send(200, "text/html", HTMLString);
               delete[] HTMLString;
@@ -130,20 +159,23 @@ void loop(void) {
   ArduinoOTA.handle();
 
   //MQTT wichtige Funktion
-  if(Ethernet.linkStatus()== LinkON)  //MQTTclient.loop() wichtig damit die Daten im Hintergrund empfangen werden
+  if(varConfig.NW_Flags & NW_MQTTActive)
   {
-    if(!MQTTclient.loop())
+    if(((varConfig.NW_Flags & NW_EthernetActive) && Ethernet.linkStatus()== LinkON)||(!(varConfig.NW_Flags & NW_EthernetActive) && WiFi.isConnected()))  //MQTTclient->loop() wichtig damit die Daten im Hintergrund empfangen werden
     {
-      MQTTclient.disconnect();
-      MQTTinit();
+      if(!MQTTclient->loop())
+      {
+        MQTTclient->disconnect();
+        MQTTinit();
+      }
     }
-  }
-  else
-  {
-    #ifdef BGTDEBUG
-      Serial.println("No Link activ");
-    #endif
-  }  
+    else
+    {
+      #ifdef BGTDEBUG
+        Serial.println("No Link activ");
+      #endif
+    } 
+  } 
   if(millis()>Break_10s)
   {
     Break_10s = millis() + 10000;
@@ -154,27 +186,28 @@ void loop(void) {
   if (Break_h < millis())
   {
     Break_h = millis() + 3600000;
+    WIFIConnectionCheck(true);
     timeClient->update();
   }
   //MQTT
-  MQTTclient.loop();
+  MQTTclient->loop();
 }
 
 bool MQTTinit()
 {
-  if(MQTTclient.connected())
-    MQTTclient.disconnect();
+  if(MQTTclient->connected())
+    MQTTclient->disconnect();
   IPAddress IPTemp;
-  IPTemp.fromString("192.168.63.102");
-  MQTTclient.setServer(IPTemp, 1883);
-  MQTTclient.setCallback(MQTT_callback);
+  IPTemp.fromString(varConfig.MQTT_Server);
+  MQTTclient->setServer(IPTemp, 1883);
+  MQTTclient->setCallback(MQTT_callback);
   unsigned long int StartTime = millis();
-  while ((millis() < (StartTime + 5000)&&(!MQTTclient.connect("A0:A1:A2:A3:A4:A5", "mrmqtt", "ReDam")))){
+  while ((millis() < (StartTime + 5000)&&(!MQTTclient->connect((varConfig.NW_Flags & NW_EthernetActive)?EthernetMAC:WiFi.macAddress().c_str() , varConfig.MQTT_Username, varConfig.MQTT_Password)))){
     delay(200);
   }
-  if(MQTTclient.connected()){
+  if(MQTTclient->connected()){
     Serial.println("MQTTclient connected");
-    MQTTclient.subscribe("/Test");
+    MQTTclient->subscribe("/Test");
     return true;
   }
   else
@@ -213,7 +246,7 @@ void EinstSpeichern()
   EEPROM.commit(); // Only needed for ESP8266 to get data written
   EEPROM.end();    // Free RAM copy of structure
 }
-void EinstLaden()
+bool EinstLaden()
 {
   NWConfig varConfigTest;
   unsigned long int Checksumme = 0;
@@ -235,10 +268,11 @@ void EinstLaden()
     EEPROM.get(0, varConfig);
   }
   else
-    Serial.println("Fehler beim Dateneinlesen");
+    return false;
 
   delay(200);
   EEPROM.end(); // Free RAM copy of structure
+  return true;
 }
 //---------------------------------------------------------------------
 //Resetvariable die hochzaehlt bei vorzeitigem Stromverlust um auf Standard-Wert wieder zurueckzustellen.
@@ -262,6 +296,86 @@ char ResetVarLesen()
   EEPROM.end(); // Free RAM copy of structure
   return temp;
 }
+//---------------------------------------------------------------------
+//Wifi Funtkionen
+void WiFi_Start_STA(char *ssid_sta, char *password_sta)
+{
+  unsigned long timeout;
+  unsigned int Adresspuffer[4];
+  if (varConfig.NW_Flags & NW_StaticIP)
+  {
+    sscanf(varConfig.NW_IPAdresse, "%d.%d.%d.%d", &Adresspuffer[0], &Adresspuffer[1], &Adresspuffer[2], &Adresspuffer[3]);
+    IPAddress IP(Adresspuffer[0], Adresspuffer[1], Adresspuffer[2], Adresspuffer[3]);
+    sscanf(varConfig.NW_Gateway, "%d.%d.%d.%d", &Adresspuffer[0], &Adresspuffer[1], &Adresspuffer[2], &Adresspuffer[3]);
+    IPAddress IPGate(Adresspuffer[0], Adresspuffer[1], Adresspuffer[2], Adresspuffer[3]);
+    sscanf(varConfig.NW_SubMask, "%d.%d.%d.%d", &Adresspuffer[0], &Adresspuffer[1], &Adresspuffer[2], &Adresspuffer[3]);
+    IPAddress IPSub(Adresspuffer[0], Adresspuffer[1], Adresspuffer[2], Adresspuffer[3]);
+    sscanf(varConfig.NW_Gateway, "%d.%d.%d.%d", &Adresspuffer[0], &Adresspuffer[1], &Adresspuffer[2], &Adresspuffer[3]);
+    IPAddress IPDNS(Adresspuffer[0], Adresspuffer[1], Adresspuffer[2], Adresspuffer[3]);
+    WiFi.config(IP, IPDNS, IPGate, IPSub);
+  }
+  WiFi.mode(WIFI_STA); // Client
+  WiFi.hostname(varConfig.NW_NetzName);
+  WiFi.begin(ssid_sta, password_sta);
+  timeout = millis() + 12000L;
+  while (WiFi.status() != WL_CONNECTED && millis() < timeout)
+  {
+    delay(10);
+  }
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    //    server.begin();
+    //    my_WiFi_Mode = WIFI_STA;
+#ifdef BGTDEBUG
+    Serial.print("Connected IP - Address : ");
+    for (int i = 0; i < 3; i++)
+    {
+      Serial.print(WiFi.localIP()[i]);
+      Serial.print(".");
+    }
+    Serial.println(WiFi.localIP()[3]);
+#endif
+  }
+  else
+  {
+    WiFi.mode(WIFI_OFF);
+#ifdef BGTDEBUG
+    Serial.println("WLAN-Connection failed");
+#endif
+  }
+}
+void WiFi_Start_AP()
+{
+  WiFi.mode(WIFI_AP); // Accesspoint
+                      //  WiFi.hostname(varConfig.NW_NetzName);
+
+  WiFi.softAP(varConfig.WLAN_SSID, varConfig.WLAN_Password);
+  //IPAddress myIP = WiFi.softAPIP();
+  //  my_WiFi_Mode = WIFI_AP;
+#ifdef BGTDEBUG
+  Serial.print("Accesspoint started - Name : ");
+  Serial.println(WiFi.SSID());
+  Serial.print("IP address: ");
+  Serial.print(WiFi.softAPIP());
+  Serial.print(" Local IP address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("WiFi Mode: ");
+  Serial.println(WiFi.getMode());
+#endif
+}
+bool WIFIConnectionCheck(bool with_reconnect = true)
+{
+  if(WiFi.status()!= WL_CONNECTED)
+  {
+    if(with_reconnect)
+    {
+      WiFi.reconnect();
+    }
+    return false;
+  }
+  return true;
+}
+//---------------------------------------------------------------------
 //---------------------------------------------------------------------
 
 

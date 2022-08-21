@@ -9,6 +9,7 @@ const String WeekDays[7]={"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"};
 enum {subwl = 27767, subnw = 30574, subcn = 20035, subpd = 17488, subps = 21328, sublf = 17996, sublm = 19788, submq = 29037}; //Zuordnung der Submit-Bereiche einer Ganzzahl
 enum {touchUp_wsgn = 33, touchDown_gn = 32, touchRight_wsbr = 15, touchLeft_br = 4, touchF1_bl = 13, touchF2_wsbl = 12, touchF3_or = 14, touchF4_wsor = 27, RGB_Red = 22, RGB_Green = 16, RGB_Blue = 17, Display_Beleuchtung = 21};
 enum {indexAGM = 0, indexLED = 1, indexProgStart = 2, indexNWK = 3};
+enum {NW_WiFi_AP = 0x01, NW_StaticIP = 0x02, NW_EthernetActive = 0x04, NW_MQTTActive = 0x08, NW_MQTTSecuree = 0x10}; //Enum for NWConfig
 const String Un_Checked[2]{"","Checked"};
 const String varSelected[2]{"", " selected=\"\""};
 // const String De_Aktiviert[2]{"Deaktiviert","Aktiviert"};
@@ -16,8 +17,8 @@ const String Ein_Aus[2]{"Aus","Ein"};
 
 struct NWConfig {
   //Einstellungen NW-Einstellungen WLAN
-  char WLAN_AP_Aktiv = 1;
-  char WLAN_SSID[40] = "Terrasse";
+  uint16_t NW_Flags = 1; //See Enum NW_...
+  char WLAN_SSID[40] = "HeatingAC";
   char WLAN_Password[70] = "";
   //Einstellungen NW-Einstellungen MQTT
   char MQTT_Server[50] = "192.168.178.5";
@@ -25,10 +26,9 @@ struct NWConfig {
   char MQTT_Username[20] = "MQTT_User";
   char MQTT_Password[70] = "12345";
   char MQTT_fprint[70] = "";
-  char MQTT_rootpath[100] = "/Garten/Terrasse";
+  char MQTT_rootpath[100] = "/Heating/Add_Control";
   //Einstellungen NW-Einstellungen Netzwerk
-  char NW_StatischeIP = 0;
-  char NW_NetzName[20] = "Terrasse";
+  char NW_NetzName[20] = "Add_Control";
   char NW_IPAdresse[17] = "192.168.178.10";
   char NW_SubMask[17] = "255.255.255.0";
   char NW_Gateway[17] = "192.168.178.1";
