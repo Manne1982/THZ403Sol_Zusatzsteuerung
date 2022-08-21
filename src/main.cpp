@@ -365,6 +365,13 @@ void loop(void) {
   }
   //MQTT
   MQTTclient->loop();
+  //Restart for WWW-Requests
+  if(ESP_Restart)
+  {
+    delay(1000);
+    ESP.restart();
+  }
+
 }
 
 bool MQTTinit()
