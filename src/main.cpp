@@ -24,6 +24,9 @@
 
 
 #define BGTDEBUG 1
+//Only for MCP28017 Test
+#define LED_PIN 0     // MCP23XXX pin LED is attached to
+#define BUTTON_PIN 1  // MCP23XXX pin button is attached to
 
 //Funktionsdefinitionen
 void WiFi_Start_STA(char *ssid_sta, char *password_sta);
@@ -45,6 +48,7 @@ String IntToStr(uint32_t _var);
 NWConfig varConfig;
 char EthernetMAC[] = "A0:A1:A2:A3:A4:A5";         //For Ethernet connection (MQTT)
 uint8_t mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5}; //For Ethernet connection
+bool ESP_Restart = false;                         //Variable for a restart with delay in WWW Request
 unsigned long Break_h = 0;
 unsigned long Break_10s = 0;
 //unsigned long Break_s = 0;
@@ -156,13 +160,168 @@ void setup(void) {
               delete[] Body_neu;
               delete[] Header_neu;
             });
+  server->on("/POST", HTTP_POST, [](AsyncWebServerRequest *request)
+            {
+              int parameter = request->params();
+              unsigned short int *submitBereich;
+              if (parameter)
+              {
+                submitBereich = (unsigned short int *)request->getParam(0)->name().c_str();
+                switch (*submitBereich)
+                {
+                case subwl:
+                  varConfig.NW_Flags &= ~NW_WiFi_AP;
+                  for (int i = 0; i < parameter; i++)
+                  {
+                    if (request->getParam(i)->name() == "wlAP")
+                      varConfig.NW_Flags |= NW_WiFi_AP;
+                    else if (request->getParam(i)->name() == "wlSSID")
+                    {
+                      if (request->getParam(i)->value().length() < 40)
+                        strcpy(varConfig.WLAN_SSID, request->getParam(i)->value().c_str());
+                      else
+                      {
+                        request->send_P(200, "text/html", "SSID zu lang<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+                        return;
+                      }
+                    }
+                    else if (request->getParam(i)->name() == "wlPassword")
+                    {
+                      if (request->getParam(i)->value().length() <= 60)
+                        strcpy(varConfig.WLAN_Password, request->getParam(i)->value().c_str());
+                      else
+                      {
+                        request->send_P(200, "text/html", "Passwort zu lang<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+                        return;
+                      }
+                    }
+                    else
+                    {
+                      request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+                      return;
+                    }
+                  }
+                  request->send_P(200, "text/html", "Daten wurden uebernommen und ESP wird neu gestartet!<br><a href=\\Settings\\>Zurueck</a> <meta http-equiv=\"refresh\" content=\"15; URL=\\\">"); //<a href=\>Startseite</a>
+                  EinstSpeichern();
+                  ESP_Restart = true;
+                  break;
+                case subnw:
+                {
+                  char tmp_StatischeIP = 0;
+                  String tmp_IPAdressen[4];
+                  String tmp_NTPServer;
+                  String tmp_NetzName;
+                  int tmp_NTPOffset;
+                  for (int i = 0; i < parameter; i++)
+                  {
+                    if (request->getParam(i)->name() == "nwSIP")
+                      tmp_StatischeIP = 1;
+                    else if (request->getParam(i)->name() == "nwIP")
+                      tmp_IPAdressen[0] = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "nwNetzName")
+                      tmp_NetzName = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "nwSubnet")
+                      tmp_IPAdressen[1] = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "nwGateway")
+                      tmp_IPAdressen[2] = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "nwDNS")
+                      tmp_IPAdressen[3] = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "nwNTPServer")
+                      tmp_NTPServer = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "nwNTPOffset")
+                      sscanf(request->getParam(i)->value().c_str(), "%d", &tmp_NTPOffset);
+                    else
+                    {
+                      request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+                      return;
+                    }
+                  }
+                  if (tmp_StatischeIP)
+                    if ((tmp_IPAdressen[0].length() == 0) || (tmp_IPAdressen[1].length() == 0))
+                    {
+                      request->send_P(200, "text/html", "Bei Statischer IP-Adresse wird eine IP-Adresse und eine Subnet-Mask benoetigt!<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+                      return;
+                    }
+                  if(tmp_StatischeIP)
+                  {
+                    varConfig.NW_Flags |= NW_StaticIP;
+                  }
+                  else
+                  {
+                    varConfig.NW_Flags &= ~NW_StaticIP;
+                  }
+                  strcpy(varConfig.NW_IPAdresse, tmp_IPAdressen[0].c_str());
+                  strcpy(varConfig.NW_NetzName, tmp_NetzName.c_str());
+                  strcpy(varConfig.NW_SubMask, tmp_IPAdressen[1].c_str());
+                  strcpy(varConfig.NW_Gateway, tmp_IPAdressen[2].c_str());
+                  strcpy(varConfig.NW_DNS, tmp_IPAdressen[3].c_str());
+                  strcpy(varConfig.NW_NTPServer, tmp_NTPServer.c_str());
+                  varConfig.NW_NTPOffset = tmp_NTPOffset;
+                  request->send_P(200, "text/html", "Daten wurden uebernommen und ESP wird neu gestartet!<br><meta http-equiv=\"refresh\" content=\"15; URL=\\\">"); //<a href=\>Startseite</a>
+                  EinstSpeichern();
+                  ESP_Restart = true;
+                  break;
+                }
+                case submq:
+                {
+                  String Temp[6];
+                  for (int i = 0; i < parameter; i++)
+                  {
+                    if (request->getParam(i)->name() == "mqServer")
+                      Temp[0] = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "mqPort")
+                      Temp[1] = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "mqUser")
+                      Temp[2] = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "mqPassword")
+                      Temp[3] = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "mqRootpath")
+                      Temp[4] = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "mqFPrint")
+                      Temp[5] = request->getParam(i)->value();
+                    else
+                    {
+                      request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+                      return;
+                    }
+                  }
+                  if((Temp[0].length()<49)&&(Temp[0].length()>5))
+                    strcpy(varConfig.MQTT_Server, Temp[0].c_str());
+                  if((Temp[1].length()<6)&&(Temp[1].length()>1))
+                    varConfig.MQTT_Port = Temp[1].toInt();
+                  if((Temp[2].length()<19)&&(Temp[2].length()>5))
+                    strcpy(varConfig.MQTT_Username, Temp[2].c_str());
+                  if((Temp[3].length()<=60)&&(Temp[3].length()>5)&&(Temp[3]!= "xxxxxx"))
+                    strcpy(varConfig.MQTT_Password, Temp[3].c_str());
+                  if((Temp[4].length()<95)&&(Temp[4].length()>5))
+                    strcpy(varConfig.MQTT_rootpath, Temp[4].c_str());
+                  if((Temp[5].length()<=65)&&(Temp[5].length()>5)&&(Temp[5]!= "xxxxxx"))
+                    strcpy(varConfig.MQTT_fprint, Temp[5].c_str());
+                  EinstSpeichern();
+                  request->send_P(200, "text/html", "MQTT Daten wurden uebernommen, ESP wird neu gestartet!<br><meta http-equiv=\"refresh\" content=\"3; URL=\\\">"); //<a href=\>Startseite</a>
+                  ESP_Restart = true;
+                  break;
+                }               
+                default:
+                  char strFailure[50];
+                  sprintf(strFailure, "Anweisung unbekannt, Empfangen: %u", *submitBereich);
+                  request->send_P(200, "text/html", strFailure);
+                  break;
+                }
+              }
+            });
+  
   server->begin();
   //Port Extension
   if (!mcp.begin_I2C()) {
     Serial.println("Port Extension Error.");
     while (1);
   }
-
+  //Only for MCP28017 Test
+  // configure LED pin for output
+  mcp.pinMode(LED_PIN, OUTPUT);
+  // configure button pin for input with pull up
+  mcp.pinMode(BUTTON_PIN, INPUT_PULLUP);
 }
 
 void loop(void) {
@@ -193,6 +352,10 @@ void loop(void) {
     Serial.print(timeClient->getFormattedTime());
     Serial.print(" ");
     Serial.println(Ethernet.localIP());
+
+    //Only for MCP28017 Test
+    mcp.digitalWrite(LED_PIN, !mcp.digitalRead(BUTTON_PIN));
+
   }
   if (Break_h < millis())
   {
