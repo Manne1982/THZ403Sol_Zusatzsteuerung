@@ -19,6 +19,9 @@
 //Projektspezifisch
 #include "HTML_Var.h"
 #include "Klassen_HZS.h"
+//Port extension
+#include <Adafruit_MCP23X17.h>
+
 
 #define BGTDEBUG 1
 
@@ -45,7 +48,6 @@ uint8_t mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5}; //For Ethernet connection
 unsigned long Break_h = 0;
 unsigned long Break_10s = 0;
 //unsigned long Break_s = 0;
-
 //Erstellen Serverelement
 AsyncWebServer * server = 0;
 //Uhrzeit Variablen
@@ -55,6 +57,9 @@ NTPClient * timeClient = 0;
 EthernetClient * e_client = 0;
 WiFiClient * wifiClient;
 PubSubClient * MQTTclient = 0;
+//Port extension
+Adafruit_MCP23X17 mcp;
+
 
 
 void setup(void) {
@@ -152,6 +157,12 @@ void setup(void) {
               delete[] Header_neu;
             });
   server->begin();
+  //Port Extension
+  if (!mcp.begin_I2C()) {
+    Serial.println("Port Extension Error.");
+    while (1);
+  }
+
 }
 
 void loop(void) {
