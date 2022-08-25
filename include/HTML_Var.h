@@ -29,7 +29,8 @@ struct NWConfig {
   char MQTT_rootpath[100] = "/Heating/Add_Control";
   //Einstellungen NW-Einstellungen Netzwerk
   char NW_NetzName[20] = "Add_Control";
-  char NW_IPAdresse[17] = "192.168.178.10";
+  char NW_IPAddress[17] = "192.168.178.10";
+  char NW_IPAddressEthernet[17] = "192.168.178.11";
   char NW_SubMask[17] = "255.255.255.0";
   char NW_Gateway[17] = "192.168.178.1";
   char NW_DNS[17] = "192.168.178.1";
@@ -89,6 +90,14 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
 <TABLE>
   <TR>
     <TD WIDTH="200" VALIGN="TOP">
+      Ethernet verwenden: </TD>
+    <TD WIDTH="200" VALIGN="TOP">
+    <input name="nwEthernetOn" value="" type="checkbox" %s> <br /><br /></TD>
+    <TD WIDTH="200" VALIGN="TOP">
+    </TD>
+  </TR>
+  <TR>
+    <TD WIDTH="200" VALIGN="TOP">
       Statische IP-Adresse verwenden: </TD>
     <TD WIDTH="200" VALIGN="TOP">
     <input name="nwSIP" value="" type="checkbox" %s> <br /><br /></TD>
@@ -100,6 +109,14 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
       IP-Adresse: </TD>
   <TD>
       <input name="nwIP" type="text" minlength="7" maxlength="15" size="15" value="%s" pattern="^((\d{1,2}|1\d\d|2[0-4]\d|25[0-5])\.){3}(\d{1,2}|1\d\d|2[0-4]\d|25[0-5])$"><br /><br /></TD>
+    <TD VALIGN="TOP">
+       </TD>
+  </TR>
+  <TR>
+    <TD VALIGN="TOP">
+      IP-Adresse Ethernet: </TD>
+  <TD>
+      <input name="nwIPEthernet" type="text" minlength="7" maxlength="15" size="15" value="%s" pattern="^((\d{1,2}|1\d\d|2[0-4]\d|25[0-5])\.){3}(\d{1,2}|1\d\d|2[0-4]\d|25[0-5])$"><br /><br /></TD>
     <TD VALIGN="TOP">
        </TD>
   </TR>
@@ -195,7 +212,7 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
     <td valign="TOP">
       Passwort: </td>
   <td>
-    <input name="mqPassword" type="password" minlength="8" maxlength="60" size="35" value="xxxxxx"><br><br></td>
+    <input name="mqPassword" type="password" minlength="5" maxlength="60" size="35" value="xxxxxx"><br><br></td>
     <td valign="TOP">
   </tr>
   <tr>

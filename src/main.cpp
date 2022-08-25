@@ -134,6 +134,7 @@ void setup(void) {
   MQTTinit();
   //Webserver
   server->onNotFound(notFound);
+  server->begin();
   server->on("/", HTTP_GET, [](AsyncWebServerRequest *request)
             {
               char *Header_neu = new char[(strlen(html_header) + 50)];
@@ -153,7 +154,7 @@ void setup(void) {
                 else
                   pntSelected[i] = (char *)varSelected[0].c_str();
               sprintf(Header_neu, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear);
-              sprintf(Body_neu, html_NWconfig, Un_Checked[varConfig.NW_Flags & NW_WiFi_AP].c_str(), varConfig.WLAN_SSID, Un_Checked[(varConfig.NW_Flags & NW_StaticIP)/NW_StaticIP].c_str(), varConfig.NW_IPAdresse, varConfig.NW_NetzName, varConfig.NW_SubMask, varConfig.NW_Gateway, varConfig.NW_DNS, varConfig.NW_NTPServer, pntSelected[0], pntSelected[1], pntSelected[2], pntSelected[3], pntSelected[4], varConfig.MQTT_Server, varConfig.MQTT_Port, varConfig.MQTT_Username, varConfig.MQTT_rootpath);
+              sprintf(Body_neu, html_NWconfig, Un_Checked[varConfig.NW_Flags & NW_WiFi_AP].c_str(), varConfig.WLAN_SSID, Un_Checked[(varConfig.NW_Flags & NW_EthernetActive)/NW_EthernetActive].c_str(), Un_Checked[(varConfig.NW_Flags & NW_StaticIP)/NW_StaticIP].c_str(), varConfig.NW_IPAddress, varConfig.NW_IPAddressEthernet, varConfig.NW_NetzName, varConfig.NW_SubMask, varConfig.NW_Gateway, varConfig.NW_DNS, varConfig.NW_NTPServer, pntSelected[0], pntSelected[1], pntSelected[2], pntSelected[3], pntSelected[4], varConfig.MQTT_Server, varConfig.MQTT_Port, varConfig.MQTT_Username, varConfig.MQTT_rootpath);
               sprintf(HTMLString, "%s%s", Header_neu, Body_neu);
               request->send(200, "text/html", HTMLString);
               delete[] HTMLString;
@@ -250,7 +251,7 @@ void setup(void) {
                   {
                     varConfig.NW_Flags &= ~NW_StaticIP;
                   }
-                  strcpy(varConfig.NW_IPAdresse, tmp_IPAdressen[0].c_str());
+                  strcpy(varConfig.NW_IPAddress, tmp_IPAdressen[0].c_str());
                   strcpy(varConfig.NW_NetzName, tmp_NetzName.c_str());
                   strcpy(varConfig.NW_SubMask, tmp_IPAdressen[1].c_str());
                   strcpy(varConfig.NW_Gateway, tmp_IPAdressen[2].c_str());
@@ -291,7 +292,7 @@ void setup(void) {
                     varConfig.MQTT_Port = Temp[1].toInt();
                   if((Temp[2].length()<19)&&(Temp[2].length()>5))
                     strcpy(varConfig.MQTT_Username, Temp[2].c_str());
-                  if((Temp[3].length()<=60)&&(Temp[3].length()>5)&&(Temp[3]!= "xxxxxx"))
+                  if((Temp[3].length()<=60)&&(Temp[3].length()>=5)&&(Temp[3]!= "xxxxxx"))
                     strcpy(varConfig.MQTT_Password, Temp[3].c_str());
                   if((Temp[4].length()<95)&&(Temp[4].length()>5))
                     strcpy(varConfig.MQTT_rootpath, Temp[4].c_str());
@@ -311,11 +312,10 @@ void setup(void) {
               }
             });
   
-  server->begin();
   //Port Extension
   if (!mcp.begin_I2C()) {
     Serial.println("Port Extension Error.");
-    while (1);
+    //while (1);
   }
   //Only for MCP28017 Test
   // configure LED pin for output
@@ -352,10 +352,8 @@ void loop(void) {
     Serial.print(timeClient->getFormattedTime());
     Serial.print(" ");
     Serial.println(Ethernet.localIP());
-
     //Only for MCP28017 Test
     mcp.digitalWrite(LED_PIN, !mcp.digitalRead(BUTTON_PIN));
-
   }
   if (Break_h < millis())
   {
@@ -380,7 +378,7 @@ bool MQTTinit()
     MQTTclient->disconnect();
   IPAddress IPTemp;
   IPTemp.fromString(varConfig.MQTT_Server);
-  MQTTclient->setServer(IPTemp, 1883);
+  MQTTclient->setServer(IPTemp, varConfig.MQTT_Port);
   MQTTclient->setCallback(MQTT_callback);
   unsigned long int StartTime = millis();
   while ((millis() < (StartTime + 5000)&&(!MQTTclient->connect((varConfig.NW_Flags & NW_EthernetActive)?EthernetMAC:WiFi.macAddress().c_str() , varConfig.MQTT_Username, varConfig.MQTT_Password)))){
@@ -392,7 +390,21 @@ bool MQTTinit()
     return true;
   }
   else
+  {
+    Serial.println("MQTTclient connection failure");
+    Serial.print("MAC-Adresse: ");
+    Serial.println((varConfig.NW_Flags & NW_EthernetActive)?EthernetMAC:WiFi.macAddress().c_str());
+    Serial.print("Benutzername: ");
+    Serial.println(varConfig.MQTT_Username);
+    Serial.print("Passwort: ");
+    Serial.println(varConfig.MQTT_Password);
+    Serial.print("Port: ");
+    Serial.println(varConfig.MQTT_Port);
+    Serial.print("Server: ");
+    Serial.println(varConfig.MQTT_Server);
+    
     return false;
+  }
 }
 //MQTT-Funktionen
 void MQTT_callback(char* topic, byte* payload, unsigned int length)
@@ -485,7 +497,7 @@ void WiFi_Start_STA(char *ssid_sta, char *password_sta)
   unsigned int Adresspuffer[4];
   if (varConfig.NW_Flags & NW_StaticIP)
   {
-    sscanf(varConfig.NW_IPAdresse, "%d.%d.%d.%d", &Adresspuffer[0], &Adresspuffer[1], &Adresspuffer[2], &Adresspuffer[3]);
+    sscanf(varConfig.NW_IPAddress, "%d.%d.%d.%d", &Adresspuffer[0], &Adresspuffer[1], &Adresspuffer[2], &Adresspuffer[3]);
     IPAddress IP(Adresspuffer[0], Adresspuffer[1], Adresspuffer[2], Adresspuffer[3]);
     sscanf(varConfig.NW_Gateway, "%d.%d.%d.%d", &Adresspuffer[0], &Adresspuffer[1], &Adresspuffer[2], &Adresspuffer[3]);
     IPAddress IPGate(Adresspuffer[0], Adresspuffer[1], Adresspuffer[2], Adresspuffer[3]);
