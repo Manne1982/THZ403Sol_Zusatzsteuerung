@@ -24,9 +24,6 @@
 
 
 #define BGTDEBUG 1
-//Only for MCP28017 Test
-#define LED_PIN 0     // MCP23XXX pin LED is attached to
-#define BUTTON_PIN 1  // MCP23XXX pin button is attached to
 
 //Funktionsdefinitionen
 void WiFi_Start_STA(char *ssid_sta, char *password_sta);
@@ -51,9 +48,9 @@ uint8_t mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5}; //For Ethernet connection
 bool ESP_Restart = false;                         //Variable for a restart with delay in WWW Request
 unsigned long Break_h = 0;
 unsigned long Break_10s = 0;
-//unsigned long Break_s = 0;
+unsigned long Break_s = 0;
 //Erstellen Serverelement
-AsyncWebServer * server = 0;
+AsyncWebServer server(80);
 //Uhrzeit Variablen
 UDP * ntpUDP = 0;
 NTPClient * timeClient = 0;
@@ -76,13 +73,13 @@ void setup(void) {
     ResetCount = 0;
   //ResetCount++;
   ResetVarSpeichern(ResetCount);
-  //WLAN starten
   delay(5000);
 
   if (ResetCount < 5) //Wenn nicht 5 mal in den ersten 5 Sekunden der Startvorgang abgebrochen wurde
     if(!EinstLaden()) //If failure than standard config will be saved
       EinstSpeichern();
   ResetVarSpeichern(0);
+  //WLAN starten
   if (varConfig.NW_Flags & NW_WiFi_AP)
   {
     WiFi_Start_AP();
@@ -103,15 +100,16 @@ void setup(void) {
       #endif
     }
     e_client = new EthernetClient;
-    MQTTclient = new PubSubClient(*e_client);
+    if(varConfig.NW_Flags & NW_MQTTActive)
+      MQTTclient = new PubSubClient(*e_client);
     ntpUDP = new EthernetUDP;
   }
   else
   {
-    MQTTclient = new PubSubClient(*wifiClient);
+    if(varConfig.NW_Flags & NW_MQTTActive)
+      MQTTclient = new PubSubClient(*wifiClient);
     ntpUDP = new WiFiUDP;
   }
-  server = new AsyncWebServer(80);
   //Zeitserver Einstellungen
   if (strlen(varConfig.NW_NTPServer))
     timeClient = new NTPClient(*ntpUDP, (const char *)varConfig.NW_NTPServer);
@@ -133,9 +131,10 @@ void setup(void) {
   //MQTT
   MQTTinit();
   //Webserver
-  server->onNotFound(notFound);
-  server->begin();
-  server->on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+//  server = new AsyncWebServer(8080);
+  server.begin();
+  server.onNotFound(notFound);
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
             {
               char *Header_neu = new char[(strlen(html_header) + 50)];
               char *Body_neu = new char[(strlen(html_NWconfig)+750)];
@@ -154,14 +153,17 @@ void setup(void) {
                 else
                   pntSelected[i] = (char *)varSelected[0].c_str();
               sprintf(Header_neu, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear);
-              sprintf(Body_neu, html_NWconfig, Un_Checked[varConfig.NW_Flags & NW_WiFi_AP].c_str(), varConfig.WLAN_SSID, Un_Checked[(varConfig.NW_Flags & NW_EthernetActive)/NW_EthernetActive].c_str(), Un_Checked[(varConfig.NW_Flags & NW_StaticIP)/NW_StaticIP].c_str(), varConfig.NW_IPAddress, varConfig.NW_IPAddressEthernet, varConfig.NW_NetzName, varConfig.NW_SubMask, varConfig.NW_Gateway, varConfig.NW_DNS, varConfig.NW_NTPServer, pntSelected[0], pntSelected[1], pntSelected[2], pntSelected[3], pntSelected[4], varConfig.MQTT_Server, varConfig.MQTT_Port, varConfig.MQTT_Username, varConfig.MQTT_rootpath);
+              sprintf(Body_neu, html_NWconfig, Un_Checked[varConfig.NW_Flags & NW_WiFi_AP].c_str(), varConfig.WLAN_SSID, 
+                          Un_Checked[(varConfig.NW_Flags & NW_EthernetActive)/NW_EthernetActive].c_str(), Un_Checked[(varConfig.NW_Flags & NW_StaticIP)/NW_StaticIP].c_str(), varConfig.NW_IPAddress, varConfig.NW_IPAddressEthernet, varConfig.NW_NetzName, varConfig.NW_SubMask, varConfig.NW_Gateway, varConfig.NW_DNS, 
+                          varConfig.NW_NTPServer, pntSelected[0], pntSelected[1], pntSelected[2], pntSelected[3], pntSelected[4], 
+                          Un_Checked[(varConfig.NW_Flags & NW_MQTTActive)/NW_MQTTActive].c_str(), varConfig.MQTT_Server, varConfig.MQTT_Port, varConfig.MQTT_Username, varConfig.MQTT_rootpath);
               sprintf(HTMLString, "%s%s", Header_neu, Body_neu);
               request->send(200, "text/html", HTMLString);
               delete[] HTMLString;
               delete[] Body_neu;
               delete[] Header_neu;
             });
-  server->on("/POST", HTTP_POST, [](AsyncWebServerRequest *request)
+  server.on("/POST", HTTP_POST, [](AsyncWebServerRequest *request)
             {
               int parameter = request->params();
               unsigned short int *submitBereich;
@@ -202,31 +204,36 @@ void setup(void) {
                       return;
                     }
                   }
-                  request->send_P(200, "text/html", "Daten wurden uebernommen und ESP wird neu gestartet!<br><a href=\\Settings\\>Zurueck</a> <meta http-equiv=\"refresh\" content=\"15; URL=\\\">"); //<a href=\>Startseite</a>
+                  request->send_P(200, "text/html", "Daten wurden uebernommen und ESP wird neu gestartet!<br><a href=\\Settings\\>Zurueck</a> <meta http-equiv=\"refresh\" content=\"20; URL=\\\">"); //<a href=\>Startseite</a>
                   EinstSpeichern();
                   ESP_Restart = true;
                   break;
                 case subnw:
                 {
                   char tmp_StatischeIP = 0;
-                  String tmp_IPAdressen[4];
+                  char tmp_EthernetOn = 0;
+                  String tmp_IPAddress[5];
                   String tmp_NTPServer;
                   String tmp_NetzName;
                   int tmp_NTPOffset;
                   for (int i = 0; i < parameter; i++)
                   {
-                    if (request->getParam(i)->name() == "nwSIP")
+                    if (request->getParam(i)->name() == "nwEthernetOn")
+                      tmp_EthernetOn = 1;
+                    else if (request->getParam(i)->name() == "nwSIP")
                       tmp_StatischeIP = 1;
                     else if (request->getParam(i)->name() == "nwIP")
-                      tmp_IPAdressen[0] = request->getParam(i)->value();
+                      tmp_IPAddress[0] = request->getParam(i)->value();
+                    else if (request->getParam(i)->name() == "nwIPEthernet")
+                      tmp_IPAddress[1] = request->getParam(i)->value();
                     else if (request->getParam(i)->name() == "nwNetzName")
                       tmp_NetzName = request->getParam(i)->value();
                     else if (request->getParam(i)->name() == "nwSubnet")
-                      tmp_IPAdressen[1] = request->getParam(i)->value();
+                      tmp_IPAddress[2] = request->getParam(i)->value();
                     else if (request->getParam(i)->name() == "nwGateway")
-                      tmp_IPAdressen[2] = request->getParam(i)->value();
+                      tmp_IPAddress[3] = request->getParam(i)->value();
                     else if (request->getParam(i)->name() == "nwDNS")
-                      tmp_IPAdressen[3] = request->getParam(i)->value();
+                      tmp_IPAddress[4] = request->getParam(i)->value();
                     else if (request->getParam(i)->name() == "nwNTPServer")
                       tmp_NTPServer = request->getParam(i)->value();
                     else if (request->getParam(i)->name() == "nwNTPOffset")
@@ -238,37 +245,41 @@ void setup(void) {
                     }
                   }
                   if (tmp_StatischeIP)
-                    if ((tmp_IPAdressen[0].length() == 0) || (tmp_IPAdressen[1].length() == 0))
+                    if ((tmp_IPAddress[0].length() == 0) || (tmp_IPAddress[1].length() == 0))
                     {
                       request->send_P(200, "text/html", "Bei Statischer IP-Adresse wird eine IP-Adresse und eine Subnet-Mask benoetigt!<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
                       return;
                     }
-                  if(tmp_StatischeIP)
-                  {
-                    varConfig.NW_Flags |= NW_StaticIP;
-                  }
-                  else
-                  {
-                    varConfig.NW_Flags &= ~NW_StaticIP;
-                  }
-                  strcpy(varConfig.NW_IPAddress, tmp_IPAdressen[0].c_str());
+                  if(tmp_StatischeIP){
+                    varConfig.NW_Flags |= NW_StaticIP;}
+                  else{
+                    varConfig.NW_Flags &= ~NW_StaticIP;}
+                  if(tmp_EthernetOn){
+                    varConfig.NW_Flags |= NW_EthernetActive;}
+                  else{
+                    varConfig.NW_Flags &= ~NW_EthernetActive;}
+                  strcpy(varConfig.NW_IPAddress, tmp_IPAddress[0].c_str());
+                  strcpy(varConfig.NW_IPAddressEthernet, tmp_IPAddress[1].c_str());
                   strcpy(varConfig.NW_NetzName, tmp_NetzName.c_str());
-                  strcpy(varConfig.NW_SubMask, tmp_IPAdressen[1].c_str());
-                  strcpy(varConfig.NW_Gateway, tmp_IPAdressen[2].c_str());
-                  strcpy(varConfig.NW_DNS, tmp_IPAdressen[3].c_str());
+                  strcpy(varConfig.NW_SubMask, tmp_IPAddress[2].c_str());
+                  strcpy(varConfig.NW_Gateway, tmp_IPAddress[3].c_str());
+                  strcpy(varConfig.NW_DNS, tmp_IPAddress[4].c_str());
                   strcpy(varConfig.NW_NTPServer, tmp_NTPServer.c_str());
                   varConfig.NW_NTPOffset = tmp_NTPOffset;
-                  request->send_P(200, "text/html", "Daten wurden uebernommen und ESP wird neu gestartet!<br><meta http-equiv=\"refresh\" content=\"15; URL=\\\">"); //<a href=\>Startseite</a>
+                  request->send_P(200, "text/html", "Daten wurden uebernommen und ESP wird neu gestartet!<br><meta http-equiv=\"refresh\" content=\"20; URL=\\\">"); //<a href=\>Startseite</a>
                   EinstSpeichern();
                   ESP_Restart = true;
                   break;
                 }
                 case submq:
                 {
+                  char tmp_MQTTOn = 0;
                   String Temp[6];
                   for (int i = 0; i < parameter; i++)
                   {
-                    if (request->getParam(i)->name() == "mqServer")
+                    if (request->getParam(i)->name() == "mqMQTTOn")
+                      tmp_MQTTOn = 1;
+                    else if (request->getParam(i)->name() == "mqServer")
                       Temp[0] = request->getParam(i)->value();
                     else if (request->getParam(i)->name() == "mqPort")
                       Temp[1] = request->getParam(i)->value();
@@ -286,6 +297,10 @@ void setup(void) {
                       return;
                     }
                   }
+                  if(tmp_MQTTOn){
+                    varConfig.NW_Flags |= NW_MQTTActive;}
+                  else{
+                    varConfig.NW_Flags &= ~NW_MQTTActive;}
                   if((Temp[0].length()<49)&&(Temp[0].length()>5))
                     strcpy(varConfig.MQTT_Server, Temp[0].c_str());
                   if((Temp[1].length()<6)&&(Temp[1].length()>1))
@@ -299,7 +314,7 @@ void setup(void) {
                   if((Temp[5].length()<=65)&&(Temp[5].length()>5)&&(Temp[5]!= "xxxxxx"))
                     strcpy(varConfig.MQTT_fprint, Temp[5].c_str());
                   EinstSpeichern();
-                  request->send_P(200, "text/html", "MQTT Daten wurden uebernommen, ESP wird neu gestartet!<br><meta http-equiv=\"refresh\" content=\"3; URL=\\\">"); //<a href=\>Startseite</a>
+                  request->send_P(200, "text/html", "MQTT Daten wurden uebernommen, ESP wird neu gestartet!<br><meta http-equiv=\"refresh\" content=\"20; URL=\\\">"); //<a href=\>Startseite</a>
                   ESP_Restart = true;
                   break;
                 }               
@@ -313,20 +328,29 @@ void setup(void) {
             });
   
   //Port Extension
-  if (!mcp.begin_I2C()) {
-    Serial.println("Port Extension Error.");
-    //while (1);
+  if (!mcp.begin_I2C(39)) {
+    Serial.println("MCP not connected!");
+  }
+  else{
+    Serial.println("MCP connected!");
   }
   //Only for MCP28017 Test
-  // configure LED pin for output
-  mcp.pinMode(LED_PIN, OUTPUT);
-  // configure button pin for input with pull up
-  mcp.pinMode(BUTTON_PIN, INPUT_PULLUP);
+  // configure all pin for output
+  for(int i =0; i <16; i++)
+    if(i<8)
+    {
+      mcp.pinMode(i, INPUT_PULLUP);
+      mcp.setupInterruptPin(i, CHANGE);
+    }
+    else
+      mcp.pinMode(i, OUTPUT);
 }
 
 void loop(void) {
   //OTA
   ArduinoOTA.handle();
+  //Test
+  static uint8_t TestCounter = 0; 
 
   //MQTT wichtige Funktion
   if(varConfig.NW_Flags & NW_MQTTActive)
@@ -353,7 +377,14 @@ void loop(void) {
     Serial.print(" ");
     Serial.println(Ethernet.localIP());
     //Only for MCP28017 Test
-    mcp.digitalWrite(LED_PIN, !mcp.digitalRead(BUTTON_PIN));
+    mcp.writeGPIOB(TestCounter);
+    TestCounter++;
+  }
+  if(millis()>Break_s)
+  {
+    Break_s = millis() + 1000;
+    //Only for MCP28017 Test
+    Serial.println(mcp.readGPIOA());
   }
   if (Break_h < millis())
   {
@@ -362,7 +393,8 @@ void loop(void) {
     timeClient->update();
   }
   //MQTT
-  MQTTclient->loop();
+  if(varConfig.NW_Flags & NW_MQTTActive)
+    MQTTclient->loop();
   //Restart for WWW-Requests
   if(ESP_Restart)
   {
@@ -374,6 +406,8 @@ void loop(void) {
 
 bool MQTTinit()
 {
+  if((varConfig.NW_Flags & NW_MQTTActive)==0)
+    return false;
   if(MQTTclient->connected())
     MQTTclient->disconnect();
   IPAddress IPTemp;

@@ -81,7 +81,7 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
     <input name="wlPassword" type="password" minlength="8" maxlength="60" size="35"><br /><br /></TD>
   </TR>
 </TABLE>
-  <br>
+  <BR>
   <input value="Submit" type="submit">
 </form>
 <hr>
@@ -90,18 +90,18 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
 <TABLE>
   <TR>
     <TD WIDTH="200" VALIGN="TOP">
-      Ethernet verwenden: </TD>
+      Ethernet on: </TD>
     <TD WIDTH="200" VALIGN="TOP">
     <input name="nwEthernetOn" value="" type="checkbox" %s> <br /><br /></TD>
     <TD WIDTH="200" VALIGN="TOP">
     </TD>
   </TR>
   <TR>
-    <TD WIDTH="200" VALIGN="TOP">
-      Statische IP-Adresse verwenden: </TD>
-    <TD WIDTH="200" VALIGN="TOP">
+    <TD VALIGN="TOP">
+      Manuelle IP Konfiguration: </TD>
+    <TD VALIGN="TOP">
     <input name="nwSIP" value="" type="checkbox" %s> <br /><br /></TD>
-    <TD WIDTH="200" VALIGN="TOP">
+    <TD VALIGN="TOP">
     </TD>
   </TR>
   <TR>
@@ -171,64 +171,71 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
       <option%s>+1</option>
       <option%s>+2</option>
       </select> 
-    <br /><br /></TD>
+    <BR /><BR /></TD>
     <TD VALIGN="TOP">
       </TD>
   </TR>
 
 </TABLE>
-    <br>
+    <BR>
   <input value="Submit" type="submit">
   </form>
-<hr>
-<h2>MQTT</h2><br>
+<HR>
+<h2>MQTT</h2><BR>
 <form method="post" action="/POST">
-<table>
-  <tbody><tr>
-    <td valign="TOP">
+<TABLE>
+  <TBODY>
+  <TR>
+    <TD VALIGN="TOP">
+      MQTT On/Off: </TD>
+    <TD VALIGN="TOP">
+    <input name="mqMQTTOn" value="" type="checkbox" %s> <br /><br /></TD>
+  </TR>
+  <TR>
+    <TD valign="TOP">
       MQTT Server: </td>
-  <td>
+  <TD>
       <input name="mqServer" type="text" minlength="7" maxlength="15" size="45" value="%s"><br><br></td>
-    <td valign="TOP">
+    <TD valign="TOP">
        </td>
-  </tr>
-  <tr>
+  </TR>
+  <TR>
     <td valign="TOP">
       MQTT Port: </td>
-  <td>
+  <TD>
     <input name="mqPort" type="number" minlength="3" maxlength="5" size="8" value="%u" required="1" pattern="[0-9]{5}"> <br><br></td>
-    <td valign="TOP">
+    <TD valign="TOP">
       </td>
-  </tr>
-  <tr>
-    <td valign="TOP">
+  </TR>
+  <TR>
+    <TD valign="TOP">
       Benutzername: </td>
-  <td>  
+  <TD>  
     <input name="mqUser" type="text" minlength="6" maxlength="15" size="19" value="%s"><br><br></td>
-    <td valign="TOP">
+    <TD valign="TOP">
        </td>
-  </tr>
-  <tr>
-    <td valign="TOP">
+  </TR>
+  <TR>
+    <TD valign="TOP">
       Passwort: </td>
-  <td>
+  <TD>
     <input name="mqPassword" type="password" minlength="5" maxlength="60" size="35" value="xxxxxx"><br><br></td>
-    <td valign="TOP">
-  </tr>
-  <tr>
-    <td valign="TOP">
+    <TD valign="TOP">
+  </TR>
+  <TR>
+    <TD valign="TOP">
       MQTT Hauptpfad: </td>
-  <td>
+  <TD>
     <input name="mqRootpath" type="text" minlength="5" maxlength="100" size="35" value="%s"><br><br></td>
-    <td valign="TOP">
-  </tr>
-  <tr>
-    <td valign="TOP">
+    <TD valign="TOP">
+  </TR>
+  <TR>
+    <TD valign="TOP">
       Zertifikat: </td>
-  <td>
+  <TD>
     <input name="mqFPrint" type="password" minlength="8" maxlength="60" size="35" value="xxxxxx"><br><br></td>
-    <td valign="TOP">
-  </tr>
+    <TD valign="TOP">
+  </TR>
 
 </tbody></table>
     <br>
