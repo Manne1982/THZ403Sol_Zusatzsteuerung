@@ -18,7 +18,7 @@
 #include <ArduinoOTA.h>
 //Projektspezifisch
 #include "HTML_Var.h"
-#include "Klassen_HZS.h"
+#include "Class_DS18B20.h"
 //Port extension
 #include <Adafruit_MCP23X17.h>
 
@@ -60,8 +60,9 @@ WiFiClient * wifiClient;
 PubSubClient * MQTTclient = 0;
 //Port extension
 Adafruit_MCP23X17 mcp;
-
-
+//Temperature sensors
+TSensorArray SensorPort1(9);
+TSensorArray SensorPort2(10);
 
 void setup(void) {
   wifiClient = new WiFiClient;
@@ -74,12 +75,11 @@ void setup(void) {
   //ResetCount++;
   ResetVarSpeichern(ResetCount);
   delay(5000);
-  D0
   if (ResetCount < 5) //Wenn nicht 5 mal in den ersten 5 Sekunden der Startvorgang abgebrochen wurde
     if(!EinstLaden()) //If failure than standard config will be saved
       EinstSpeichern();
   ResetVarSpeichern(0);
-  //WLAN starten
+  //start WLAN
   if (varConfig.NW_Flags & NW_WiFi_AP)
   {
     WiFi_Start_AP();
@@ -329,10 +329,16 @@ void setup(void) {
   
   //Port Extension
   if (!mcp.begin_I2C(39)) {
-    Serial.println("MCP not connected!");
+    Serial.println("MCP 39 not connected!");
   }
   else{
-    Serial.println("MCP connected!");
+    Serial.println("MCP 39 connected!");
+  }
+  if (!mcp.begin_I2C(38)) {
+    Serial.println("MCP 38 not connected!");
+  }
+  else{
+    Serial.println("MCP 38 connected!");
   }
   //Only for MCP28017 Test
   // configure all pin for output
@@ -350,7 +356,7 @@ void loop(void) {
   //OTA
   ArduinoOTA.handle();
   //Test
-  static uint8_t TestCounter = 0; 
+  //static uint8_t TestCounter = 0; 
 
   //MQTT wichtige Funktion
   if(varConfig.NW_Flags & NW_MQTTActive)
@@ -373,18 +379,22 @@ void loop(void) {
   if(millis()>Break_10s)
   {
     Break_10s = millis() + 10000;
+    SensorPort1.StartConversion();
+    SensorPort2.StartConversion();
+#ifdef BGTDEBUG
     Serial.print(timeClient->getFormattedTime());
     Serial.print(" ");
     Serial.println(Ethernet.localIP());
+#endif
     //Only for MCP28017 Test
-    mcp.writeGPIOB(TestCounter);
-    TestCounter++;
+    //mcp.writeGPIOB(TestCounter);
+    //TestCounter++;
   }
   if(millis()>Break_s)
   {
     Break_s = millis() + 1000;
     //Only for MCP28017 Test
-    Serial.println(mcp.readGPIOA());
+    //Serial.println(mcp.readGPIOA());
   }
   if (Break_h < millis())
   {
@@ -395,6 +405,36 @@ void loop(void) {
   //MQTT
   if(varConfig.NW_Flags & NW_MQTTActive)
     MQTTclient->loop();
+  //Temperature sensor
+  
+  if(SensorPort1.Loop())
+  {
+    for(int i = 0; i < SensorPort1.GetSensorCount(); i++)
+    {
+      if(SensorPort1.GetSensor(i)->NewValueAvailable())
+      {
+        Serial.print("New Value for Sensor ");
+        Serial.print(SensorPort1.GetSensor(i)->getName());
+        Serial.print(": ");
+        Serial.print(SensorPort1.GetSensor(i)->getTempC());
+        Serial.println(" °C"); 
+      }
+    }
+  }
+  if(SensorPort2.Loop())
+  {
+    for(int i = 0; i < SensorPort2.GetSensorCount(); i++)
+    {
+      if(SensorPort2.GetSensor(i)->NewValueAvailable())
+      {
+        Serial.print("New Value for Sensor ");
+        Serial.print(SensorPort2.GetSensor(i)->getName());
+        Serial.print(": ");
+        Serial.print(SensorPort2.GetSensor(i)->getTempC());
+        Serial.println(" °C"); 
+      }
+    }
+  }
   //Restart for WWW-Requests
   if(ESP_Restart)
   {
@@ -604,53 +644,3 @@ bool WIFIConnectionCheck(bool with_reconnect = true)
 }
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
-
-
-
-/*
-OneWire  ds(D2);  // on pin 10 (a 4.7K resistor is necessary)
-TSensor * SensorList[10];
-u_int8_t SensorListCount = 0;
-unsigned long Break_10s = 0;                                //Variable fuer Dinge die alle 1s ausgefuehrt werden
-
-void setup(void) {
-  Serial.begin(9600);
-  for(int i = 0; i < 10; i++)
-  {
-    SensorList[i] = new TSensor(&ds);
-    if(!SensorList[i]->SensSearch())
-    {
-      delete SensorList[i];
-      SensorListCount = i;
-      break;
-    }
-    char Temp[15];
-    sprintf(Temp, "Sensor %d", i);
-    SensorList[i]->setName(Temp);
-  }
-}
-
-void loop(void) {
-  if(millis()>Break_10s)
-  {
-    Break_10s = millis() + 10000;
-    for(int i = 0; i < SensorListCount; i++)
-    {
-      SensorList[i]->startConversion();
-    }
-  }
-  for(int i = 0; i < SensorListCount; i++)
-  {
-    SensorList[i]->loop();
-    if(SensorList[i]->NewValueAvailable())
-    {
-      Serial.print("Neuer Temp Wert für Sensor ");
-      Serial.print(SensorList[i]->getName());
-      Serial.print(": ");
-      Serial.print(SensorList[i]->getTempC());
-      Serial.println(" °C"); 
-    }
-  }
-
-}
-*/
