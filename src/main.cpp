@@ -74,7 +74,7 @@ void setup(void) {
   //ResetCount++;
   ResetVarSpeichern(ResetCount);
   delay(5000);
-
+  D0
   if (ResetCount < 5) //Wenn nicht 5 mal in den ersten 5 Sekunden der Startvorgang abgebrochen wurde
     if(!EinstLaden()) //If failure than standard config will be saved
       EinstSpeichern();
