@@ -189,6 +189,25 @@ String TSensor::getName()
 {
     return Name;
 }
+String TSensor::getAddressHEX()
+{
+/*    char Temp[20] = "";
+    for(int i = 0; i < 8; i++)
+    {
+        sprintf(&Temp[i*2], "%02X", addr[i]);
+    }
+    Temp[16]=0;
+    uint64 * Test = (uint64*) addr;
+    Serial.println(*Test);
+    return Temp;
+*/
+    return convertUINT64toHEXstr((uint64*)addr);
+}
+uint64 TSensor::getAddressUINT64()
+{
+    uint64 * Temp = (uint64*) addr;
+    return *Temp;
+}
 bool TSensor::NewValueAvailable()
 {
     return NewValue;
@@ -267,4 +286,16 @@ uint8 TSensorArray::Loop()
             CountNewValues++;
     }
     return CountNewValues;
+}
+
+String convertUINT64toHEXstr(uint64 * input)
+{
+    char Temp[30] = "";
+    byte *inputByte = (byte *) input;
+    for(int i = 0; i < 8; i++)
+    {
+        sprintf(&Temp[i*3], "%02X ", inputByte[i]);
+    }
+    Temp[23]=0;
+    return Temp;
 }

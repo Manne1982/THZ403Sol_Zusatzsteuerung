@@ -1,5 +1,5 @@
-#ifndef Klassen_HZS
-#define Klassen_HZS
+#ifndef Class_DS18B20
+#define Class_DS18B20
 
 #include <Arduino.h>
 #include <OneWire.h>
@@ -17,6 +17,8 @@ class TSensor
         float getTempC();           //Get saved Temperature as degree Celcius
         void setName(String newName);
         String getName();
+        String getAddressHEX();
+        uint64 getAddressUINT64();
     private:
         byte * data;
         byte * addr;
@@ -47,6 +49,7 @@ class TSensorArray
         OneWire * Source;
 };
 
+String convertUINT64toHEXstr(uint64 * input); //Function needed in TSensor class
 
 
 #include "Class_DS18B20.cpp"

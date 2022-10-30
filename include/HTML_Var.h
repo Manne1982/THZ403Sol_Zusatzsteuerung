@@ -15,28 +15,6 @@ const String varSelected[2]{"", " selected=\"\""};
 // const String De_Aktiviert[2]{"Deaktiviert","Aktiviert"};
 const String Ein_Aus[2]{"Aus","Ein"};
 
-struct NWConfig {
-  //Einstellungen NW-Einstellungen WLAN
-  uint16_t NW_Flags = 1; //See Enum NW_...
-  char WLAN_SSID[40] = "HeatingAC";
-  char WLAN_Password[70] = "";
-  //Einstellungen NW-Einstellungen MQTT
-  char MQTT_Server[50] = "192.168.178.5";
-  uint16_t MQTT_Port = 1883;
-  char MQTT_Username[20] = "MQTT_User";
-  char MQTT_Password[70] = "12345";
-  char MQTT_fprint[70] = "";
-  char MQTT_rootpath[100] = "/Heating/Add_Control";
-  //Einstellungen NW-Einstellungen Netzwerk
-  char NW_NetzName[20] = "Add_Control";
-  char NW_IPAddress[17] = "192.168.178.10";
-  char NW_IPAddressEthernet[17] = "192.168.178.11";
-  char NW_SubMask[17] = "255.255.255.0";
-  char NW_Gateway[17] = "192.168.178.1";
-  char NW_DNS[17] = "192.168.178.1";
-  char NW_NTPServer[55] = "fritz.box";
-  char NW_NTPOffset = 0;
-};
 
 
 const char html_header[] PROGMEM = R"rawliteral(
