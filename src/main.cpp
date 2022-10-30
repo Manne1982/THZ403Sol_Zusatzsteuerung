@@ -19,6 +19,7 @@
 //Projektspezifisch
 #include "HTML_Var.h"
 #include "Class_DS18B20.h"
+#include "Klassen_HZS.h"
 //Port extension
 #include <Adafruit_MCP23X17.h>
 
@@ -43,6 +44,8 @@ String IntToStr(uint32_t _var);
 
 //Projektvariablen
 NWConfig varConfig;
+digital_Output Outputs[8];  //Variable array for save Output Information.
+TempSensor TempSensors[10]; //Variable array for save Information about DS18B20 sensors.
 char EthernetMAC[] = "A0:A1:A2:A3:A4:A5";         //For Ethernet connection (MQTT)
 uint8_t mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5}; //For Ethernet connection
 bool ESP_Restart = false;                         //Variable for a restart with delay in WWW Request
@@ -59,7 +62,7 @@ EthernetClient * e_client = 0;
 WiFiClient * wifiClient;
 PubSubClient * MQTTclient = 0;
 //Port extension
-Adafruit_MCP23X17 mcp;
+Adafruit_MCP23X17 mcp[2];
 //Temperature sensors
 TSensorArray SensorPort1(9);
 TSensorArray SensorPort2(10);
@@ -67,16 +70,15 @@ TSensorArray SensorPort2(10);
 void setup(void) {
   wifiClient = new WiFiClient;
   Serial.begin(9600);
-  delay(3000);
   uint8_t ResetCount = 0;
   ResetCount = ResetVarLesen();
   if(ResetCount > 5)  //Prüfen ob Wert Plausibel, wenn nicht rücksetzen
     ResetCount = 0;
-  //ResetCount++;
+  //ResetCount++;     //If controller restart 5 times in first 5 seconds do not load saved settings (basic setting will setted)
   ResetVarSpeichern(ResetCount);
   delay(5000);
-  if (ResetCount < 5) //Wenn nicht 5 mal in den ersten 5 Sekunden der Startvorgang abgebrochen wurde
-    if(!EinstLaden()) //If failure than standard config will be saved
+  if (ResetCount < 5) //If controller restart 5 times in first 5 seconds do not load saved settings (basic setting will setted)
+    if(!EinstLaden()) //If failure then standard config will be saved
       EinstSpeichern();
   ResetVarSpeichern(0);
   //start WLAN
@@ -328,30 +330,35 @@ void setup(void) {
             });
   
   //Port Extension
-  if (!mcp.begin_I2C(39)) {
-    Serial.println("MCP 39 not connected!");
+  if (!mcp[0].begin_I2C(38)) {
+    #ifdef BGTDEBUG
+      Serial.println("MCP 38 not connected!");
+    #endif
   }
   else{
-    Serial.println("MCP 39 connected!");
+    #ifdef BGTDEBUG
+      Serial.println("MCP 38 connected!");
+    #endif
   }
-  if (!mcp.begin_I2C(38)) {
-    Serial.println("MCP 38 not connected!");
+  if (!mcp[1].begin_I2C(39)) {
+    #ifdef BGTDEBUG
+      Serial.println("MCP 39 not connected!");
+    #endif
   }
   else{
-    Serial.println("MCP 38 connected!");
+    #ifdef BGTDEBUG
+      Serial.println("MCP 39 connected!");
+    #endif
   }
   //Only for MCP28017 Test
-  // configure all pin for output
+  //configure all pin for output MCP 2 and input for MCP 1
   for(int i =0; i <16; i++)
-    if(i<8)
-    {
-      mcp.pinMode(i, INPUT_PULLUP);
-      mcp.setupInterruptPin(i, CHANGE);
-    }
-    else
-      mcp.pinMode(i, OUTPUT);
+  {
+    mcp[0].pinMode(i, INPUT_PULLUP);
+    mcp[0].setupInterruptPin(i, CHANGE);
+    mcp[1].pinMode(i, OUTPUT);
+  }
 }
-
 void loop(void) {
   //OTA
   ArduinoOTA.handle();
@@ -414,7 +421,7 @@ void loop(void) {
       if(SensorPort1.GetSensor(i)->NewValueAvailable())
       {
         Serial.print("New Value for Sensor ");
-        Serial.print(SensorPort1.GetSensor(i)->getName());
+        Serial.print(SensorPort1.GetSensor(i)->getAddressHEX());
         Serial.print(": ");
         Serial.print(SensorPort1.GetSensor(i)->getTempC());
         Serial.println(" °C"); 
@@ -428,7 +435,7 @@ void loop(void) {
       if(SensorPort2.GetSensor(i)->NewValueAvailable())
       {
         Serial.print("New Value for Sensor ");
-        Serial.print(SensorPort2.GetSensor(i)->getName());
+        Serial.print(SensorPort2.GetSensor(i)->getAddressHEX());
         Serial.print(": ");
         Serial.print(SensorPort2.GetSensor(i)->getTempC());
         Serial.println(" °C"); 
@@ -498,17 +505,19 @@ void notFound(AsyncWebServerRequest *request)
 //Einstellungen laden und Speichern im EEPROM bzw. Flash
 void EinstSpeichern()
 {
-  unsigned long int Checksumme = 0;
-  unsigned char *pointer;
+  uint8 Checksumme = 0;
+  uint8 *pointer;
   pointer = (unsigned char *)&varConfig;
   for (unsigned int i = 0; i < sizeof(varConfig); i++)
     Checksumme += pointer[i];
 
   //EEPROM initialisieren
-  EEPROM.begin(sizeof(varConfig) + 14);
+  EEPROM.begin(sizeof(varConfig) + sizeof(Outputs) + sizeof(TempSensors) + 14);
 
   EEPROM.put(0, varConfig);
   EEPROM.put(sizeof(varConfig) + 1, Checksumme);
+  EEPROM.put(sizeof(varConfig) + 3, Outputs);
+  EEPROM.put(sizeof(varConfig) + sizeof(Outputs) + 4, TempSensors);
 
   EEPROM.commit(); // Only needed for ESP8266 to get data written
   EEPROM.end();    // Free RAM copy of structure
@@ -516,17 +525,21 @@ void EinstSpeichern()
 bool EinstLaden()
 {
   NWConfig varConfigTest;
-  unsigned long int Checksumme = 0;
-  unsigned long int ChecksummeEEPROM = 0;
-  unsigned char *pointer;
+  uint8 Checksumme = 0;
+  uint8 ChecksummeEEPROM = 0;
+  uint8 *pointer;
   pointer = (unsigned char *)&varConfigTest;
   //EEPROM initialisieren
   unsigned int EEPROMSize;
-  EEPROMSize = sizeof(varConfig) + 14;
+  EEPROMSize = sizeof(varConfig) + sizeof(Outputs) + sizeof(TempSensors) + 14;
   EEPROM.begin(EEPROMSize);
 
   EEPROM.get(0, varConfigTest);
   EEPROM.get(sizeof(varConfigTest) + 1, ChecksummeEEPROM);
+  EEPROM.get(sizeof(varConfig) + 3, Outputs);
+  EEPROM.get(sizeof(varConfig) + sizeof(Outputs) + 4, TempSensors);
+
+  EEPROM.get(0, varConfig); //Nur für die Speicherumstellung
 
   for (unsigned int i = 0; i < sizeof(varConfigTest); i++)
     Checksumme += pointer[i];
@@ -535,8 +548,11 @@ bool EinstLaden()
     EEPROM.get(0, varConfig);
   }
   else
+  {
+    delay(200);
+    EEPROM.end(); // Free RAM copy of structure
     return false;
-
+  }
   delay(200);
   EEPROM.end(); // Free RAM copy of structure
   return true;
@@ -545,9 +561,9 @@ bool EinstLaden()
 //Resetvariable die hochzaehlt bei vorzeitigem Stromverlust um auf Standard-Wert wieder zurueckzustellen.
 void ResetVarSpeichern(char Count)
 {
-  EEPROM.begin(sizeof(varConfig) + 14);
+  EEPROM.begin(sizeof(varConfig) + sizeof(Outputs) + sizeof(TempSensors) + 14);
 
-  EEPROM.put(sizeof(varConfig) + 10, Count);
+  EEPROM.put(sizeof(varConfig) + sizeof(Outputs) + sizeof(TempSensors) + 10, Count);
 
   EEPROM.commit(); // Only needed for ESP8266 to get data written
   EEPROM.end();    // Free RAM copy of structure
@@ -556,7 +572,7 @@ char ResetVarLesen()
 {
   unsigned int EEPROMSize;
   char temp = 0;
-  EEPROMSize = sizeof(varConfig) + 14;
+  EEPROMSize = sizeof(varConfig) + sizeof(Outputs) + sizeof(TempSensors) + 14;
   EEPROM.begin(EEPROMSize);
   EEPROM.get(EEPROMSize - 4, temp);
   delay(200);
