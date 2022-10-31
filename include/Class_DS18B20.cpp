@@ -263,13 +263,39 @@ uint8 TSensorArray::GetSensorCount()
 {
     return SensorCount;
 }
-TSensor * TSensorArray::GetSensor(uint8 Index)
+TSensor * TSensorArray::GetSensorIndex(uint8 Index)
 {
     if(Index < SensorCount)
         return SArray[Index];
     else
         return 0;
 }
+TSensor * TSensorArray::GetSensorAddr(uint64 Addr)
+{
+    for(int i = 0; i < SensorCount; i++)
+    {
+        if(SArray[i]->getAddressUINT64() == Addr)
+            return SArray[i];
+    }
+    return 0;
+}
+float TSensorArray::GetTempIndex(uint8 Index)
+{
+    if(Index < SensorCount)
+        return SArray[Index]->getTempC();
+    else
+        return 999;
+}
+float TSensorArray::GetTempAddr(uint64 Addr)
+{
+    for(int i = 0; i < SensorCount; i++)
+    {
+        if(SArray[i]->getAddressUINT64() == Addr)
+            return SArray[i]->getTempC();
+    }
+    return 999;
+}
+
 void TSensorArray::StartConversion()
 {
     for(int i = 0; i < SensorCount; i++)
