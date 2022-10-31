@@ -40,7 +40,10 @@ class TSensorArray
         uint8 SensorSearch(); //Delete old List and create a new list with connected Sensors
         void StartConversion(); //Meassurement initiate for all Sensors
         uint8 Loop();
-        TSensor * GetSensor(uint8 Index);
+        TSensor * GetSensorIndex(uint8 Index);
+        TSensor * GetSensorAddr(uint64 Addr);
+        float GetTempIndex(uint8 Index);
+        float GetTempAddr(uint64 Addr);
     private:
         uint8 Port;
         uint8 SensorCount;

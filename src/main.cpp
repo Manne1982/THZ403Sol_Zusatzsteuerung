@@ -195,12 +195,12 @@ void loop(void) {
   {
     for(int i = 0; i < SensorPort1.GetSensorCount(); i++)
     {
-      if(SensorPort1.GetSensor(i)->NewValueAvailable())
+      if(SensorPort1.GetSensorIndex(i)->NewValueAvailable())
       {
         Serial.print("New Value for Sensor ");
-        Serial.print(SensorPort1.GetSensor(i)->getAddressHEX());
+        Serial.print(SensorPort1.GetSensorIndex(i)->getAddressHEX());
         Serial.print(": ");
-        Serial.print(SensorPort1.GetSensor(i)->getTempC());
+        Serial.print(SensorPort1.GetSensorIndex(i)->getTempC());
         Serial.println(" °C"); 
       }
     }
@@ -209,12 +209,12 @@ void loop(void) {
   {
     for(int i = 0; i < SensorPort2.GetSensorCount(); i++)
     {
-      if(SensorPort2.GetSensor(i)->NewValueAvailable())
+      if(SensorPort2.GetSensorIndex(i)->NewValueAvailable())
       {
         Serial.print("New Value for Sensor ");
-        Serial.print(SensorPort2.GetSensor(i)->getAddressHEX());
+        Serial.print(SensorPort2.GetSensorIndex(i)->getAddressHEX());
         Serial.print(": ");
-        Serial.print(SensorPort2.GetSensor(i)->getTempC());
+        Serial.print(SensorPort2.GetSensorIndex(i)->getTempC());
         Serial.println(" °C"); 
       }
     }
