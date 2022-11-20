@@ -28,7 +28,7 @@ class TSensor
         char * SType;   //Addr[0] --> 0x10 = DS18S20; 0x28 = DS18B20; 0x22 = DS1822
         float TempMin;
         float TempMax;
-        float Offset;
+        float TOffset;
         unsigned long StartMeasureTime;
         bool NewValue;
         OneWire * Source;

@@ -515,9 +515,9 @@ void WebserverRoot(AsyncWebServerRequest *request)
 void WebserverSensors(AsyncWebServerRequest *request)
 {
   int countSensors = SensorPort1.GetSensorCount() + SensorPort2.GetSensorCount();
-  char *HTMLString = new char[(strlen(html_header) + 50)+(strlen(html_SEconfig1)+(countSensors * (strlen(html_SEconfig2) + 50))+strlen(html_SEconfig3))];
-  char *HTMLString2 = new char[(strlen(html_header) + 50)+(strlen(html_SEconfig1)+(countSensors * (strlen(html_SEconfig2) + 50))+strlen(html_SEconfig3))];
-  HTMLString2[0] = 0;
+  uint16 StringLen = (strlen(html_header) + 50)+strlen(html_SEconfig1)+(countSensors * (strlen(html_SEconfig2) + 100))+strlen(html_SEconfig3);
+  char *HTMLString = new char[StringLen];
+  char *HTMLString2 = new char[StringLen];
   //Vorbereitung Datum
   unsigned long epochTime = timeClient->getEpochTime();
   struct tm *ptm = gmtime((time_t *)&epochTime);
@@ -533,9 +533,10 @@ void WebserverSensors(AsyncWebServerRequest *request)
   }
   for(int i = 0; i < SensorPort2.GetSensorCount(); i++)
   {
-    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort2.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort2.GetSensorIndex(i)->getTempC(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, SensorPort2.GetSensorIndex(i)->getName().c_str(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, SensorPort1.GetSensorIndex(i)->getOffset(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, 0);
+    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort2.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort2.GetSensorIndex(i)->getTempC(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, SensorPort2.GetSensorIndex(i)->getName().c_str(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, SensorPort2.GetSensorIndex(i)->getOffset(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, 0);
     strcpy(HTMLString2, HTMLString);
   }
+  
   sprintf(HTMLString, html_SEconfig3, HTMLString2);
   request->send(200, "text/html", HTMLString);
   delete[] HTMLString;

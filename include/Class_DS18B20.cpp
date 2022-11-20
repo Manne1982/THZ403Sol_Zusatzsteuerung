@@ -4,7 +4,7 @@
 TSensor::TSensor(OneWire * ds, byte * Address):
 TempMin(-55.0),
 TempMax(125.0),
-Offset(0),
+TOffset(0),
 StartMeasureTime(0),
 NewValue(false)
 {
@@ -38,7 +38,7 @@ NewValue(false)
 TSensor::TSensor(OneWire * ds):
 TempMin(-55.0),
 TempMax(125.0),
-Offset(0),
+TOffset(0),
 StartMeasureTime(0),
 NewValue(false)
 {
@@ -53,10 +53,10 @@ NewValue(false)
 }
 TSensor::~TSensor()
 {
+    delete[] data;
     delete[] addr;
     delete[] SType;
     delete[] Name;
-    delete[] data;
 }
 bool TSensor::SensSearch()
 {
@@ -217,11 +217,11 @@ bool TSensor::NewValueAvailable()
 }
 void TSensor::setOffset(float TempOffset)
 {
-    Offset = TempOffset;
+    TOffset = TempOffset;
 }
 float TSensor::getOffset()
 {
-    return Offset;
+    return TOffset;
 }
 
 TSensorArray::TSensorArray(uint8 port)

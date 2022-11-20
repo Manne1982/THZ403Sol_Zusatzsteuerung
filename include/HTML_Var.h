@@ -36,6 +36,7 @@ Uhrzeit: %s | Datum: %s, %02d.%02d.%d | Status:
 </h3><hr>
 )rawliteral";
 
+
 const char html_SEconfig1[] PROGMEM = R"rawliteral(
 <h1>Sensor Einstellungen</h1><hr>
 <h2>Luftsensor</h2><br />
@@ -63,7 +64,27 @@ const char html_SEconfig1[] PROGMEM = R"rawliteral(
 	  </TD>
   </TR>
 )rawliteral";
+
 const char html_SEconfig2[] PROGMEM = R"rawliteral(
+  %s
+  <TR>
+  <form action="/get">
+    <TD VALIGN="TOP">
+	  %s</TD>
+    <TD VALIGN="TOP">
+	  %0.2f °C</TD>
+    <TD VALIGN="TOP">
+	  <input name="PS_%llu_%d_1" type="text" maxlength="14" size="15" value="%s" required="1"><br /><br /></TD>
+    <TD VALIGN="TOP">
+	  <input name="PS_%llu_%d_2" type="number" min="-5" max="+5" step="0.1" maxlength="4" size="5" value="%0.1f" required="1"><br /><br /></TD>
+    <TD VALIGN="TOP">
+	  <input name="PS_%llu_%d_3" type="number" min="0" max="2" step="1" size="5" value="%u" list="SensorStates" required="1"><br /><br /></TD>
+    <TD VALIGN="TOP">
+	  <input type="reset"><input value="Submit" type="submit"></TD>
+  </form>
+  </TR>
+)rawliteral";
+const char html_SEconfig2_1[] PROGMEM = R"rawliteral(
   %s
   <TR>
   <form action="/get">
@@ -76,12 +97,14 @@ const char html_SEconfig2[] PROGMEM = R"rawliteral(
     <TD VALIGN="TOP">
 	  <input name="PS_%llu_%u_2" type="number" min="-5" max="+5" step="0.1" maxlength="4" size="5" value="%f" required="1"><br /><br /></TD>
     <TD VALIGN="TOP">
-	  <input name="PS_%llu_%u_3" type="number" min="0" max="2" step="1" size="5" value="%u" required="1"><br /><br /></TD>
+	  <input name="PS_%llu_%u_3" type="number" min="0" max="2" step="1" size="5" value="%u" list="SensorStates" required="1"><br /><br /></TD>
     <TD VALIGN="TOP">
 	  <input type="reset"><input value="Submit" type="submit"></TD>
   </form>
   </TR>
 )rawliteral";
+
+
 const char html_SEconfig3[] PROGMEM = R"rawliteral(
 %s
 </TABLE>
