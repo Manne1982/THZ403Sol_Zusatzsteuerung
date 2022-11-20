@@ -22,16 +22,78 @@ const char html_header[] PROGMEM = R"rawliteral(
 <html>
 <head>
   <title>Heizung Zusatzsteuerung</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1", charset="UTF-8">
 </head>
 <body bgcolor=\"#BBFFFF\">
 Uhrzeit: %s | Datum: %s, %02d.%02d.%d | Status: 
 <br />
 <hr><h3>
-<a href=\>Einstellungen</a> 
+<a href=\>Startseite</a> | 
+<a href=\Sensors\>Sensor-Einstellungen</a> | 
+<a href=\Output\>Relais-Einstellungen</a> | 
+<a href=\Settings\>Einstellungen</a> | 
 
 </h3><hr>
 )rawliteral";
+
+const char html_SEconfig1[] PROGMEM = R"rawliteral(
+<h1>Sensor Einstellungen</h1><hr>
+<h2>Luftsensor</h2><br />
+<hr>
+<datalist id="SensorStates">
+  <option value="1">Aktiv</option>
+  <option value="0">nicht konfiguriert</option>
+  <option value="2">nicht verbunden</option>
+</datalist>
+
+<h2>Temperatursensoren</h2><br />
+<TABLE> <!-- 'border="1"-->
+  <TR>
+    <TD WIDTH="200" VALIGN="TOP">
+      <h3>Sensoradresse</h3> <br /></TD>
+    <TD WIDTH="150" VALIGN="TOP">
+	  <h3>Temperatur</h3></TD>
+    <TD WIDTH="150" VALIGN="TOP">
+	  <h3>Sensorname</h3></TD>
+    <TD WIDTH="120" VALIGN="TOP">
+	  <h3>Offset in °K</h3></TD>
+    <TD WIDTH="80" VALIGN="TOP">
+	  <h3>Aktiv</h3></TD>
+    <TD WIDTH="200" VALIGN="TOP">
+	  </TD>
+  </TR>
+)rawliteral";
+const char html_SEconfig2[] PROGMEM = R"rawliteral(
+  %s
+  <TR>
+  <form action="/get">
+    <TD VALIGN="TOP">
+	  %s</TD>
+    <TD VALIGN="TOP">
+	  %f °C</TD>
+    <TD VALIGN="TOP">
+	  <input name="PS_%llu_%u_1" type="text" maxlength="14" size="15" value="%s" required="1"><br /><br /></TD>
+    <TD VALIGN="TOP">
+	  <input name="PS_%llu_%u_2" type="number" min="-5" max="+5" step="0.1" maxlength="4" size="5" value="%f" required="1"><br /><br /></TD>
+    <TD VALIGN="TOP">
+	  <input name="PS_%llu_%u_3" type="number" min="0" max="2" step="1" size="5" value="%u" required="1"><br /><br /></TD>
+    <TD VALIGN="TOP">
+	  <input type="reset"><input value="Submit" type="submit"></TD>
+  </form>
+  </TR>
+)rawliteral";
+const char html_SEconfig3[] PROGMEM = R"rawliteral(
+%s
+</TABLE>
+<br />
+</body>
+</html>
+)rawliteral";
+
+const char html_OPconfig[] PROGMEM = R"rawliteral(
+
+)rawliteral";
+
 
 const char html_NWconfig[] PROGMEM = R"rawliteral(
 <h1>Heizung Zusatzsteuerung NW Einstellungen</h1><hr>

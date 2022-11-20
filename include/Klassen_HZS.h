@@ -36,8 +36,9 @@ struct digital_Output{
 
 struct TempSensor{
   uint64 Address = 0; //8 Byte Address saved as unsigned int for easier comparison
-  char Name[15] = "unnamed"; //Name of Sensor
+  char Name[15] = ""; //Name of Sensor
   byte SensorState = 0; //0 = Sensor not found; 1 = Sensor found; 2 = MQTT enabled for found sensor
+  float Offset = 0;
 };
 
 

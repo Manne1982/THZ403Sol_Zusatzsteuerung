@@ -16,6 +16,8 @@ class TSensor
         bool NewValueAvailable();   //If a new Value available that was not fetched --> true
         float getTempC();           //Get saved Temperature as degree Celcius
         void setName(String newName);
+        void setOffset(float TempOffset);
+        float getOffset();
         String getName();
         String getAddressHEX();
         uint64 getAddressUINT64();
@@ -26,6 +28,7 @@ class TSensor
         char * SType;   //Addr[0] --> 0x10 = DS18S20; 0x28 = DS18B20; 0x22 = DS1822
         float TempMin;
         float TempMax;
+        float Offset;
         unsigned long StartMeasureTime;
         bool NewValue;
         OneWire * Source;

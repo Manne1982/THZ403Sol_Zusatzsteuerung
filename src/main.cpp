@@ -36,6 +36,8 @@ bool WIFIConnectionCheck(bool with_reconnect);
 void notFound(AsyncWebServerRequest *request);
 void WebserverRoot(AsyncWebServerRequest *request); 
 void WebserverPOST(AsyncWebServerRequest *request);
+void WebserverSensors(AsyncWebServerRequest *request);
+
 //Functions for saving settings
 void EinstSpeichern();
 bool EinstLaden();
@@ -76,6 +78,9 @@ TSensorArray SensorPort1(9);
 TSensorArray SensorPort2(10);
 
 void setup(void) {
+  pinMode(D3, INPUT); //Interrupt PIN for INTA MCP 1
+  pinMode(D4, INPUT); //Interrupt PIN for INTB MCP 1
+
   wifiClient = new WiFiClient;
   Serial.begin(9600);
   uint8_t ResetCount = 0;
@@ -114,6 +119,7 @@ void setup(void) {
   server.begin();
   server.onNotFound(notFound);
   server.on("/", HTTP_GET, WebserverRoot);
+  server.on("/Sensors", HTTP_GET, WebserverSensors);
   server.on("/POST", HTTP_POST, WebserverPOST);
   
   //Port Extension
@@ -171,6 +177,8 @@ void loop(void) {
     Break_10s = millis() + 10000;
     SensorPort1.StartConversion();
     SensorPort2.StartConversion();
+    Serial.println(mcp[0].readGPIOA()); //Only for MCP-Interrupt-Test
+    Serial.println(mcp[0].readGPIOB()); //Only for MCP-Interrupt-Test
 #ifdef BGTDEBUG
     Serial.print(timeClient->getFormattedTime());
     Serial.print(" ");
@@ -503,6 +511,35 @@ void WebserverRoot(AsyncWebServerRequest *request)
   delete[] HTMLString;
   delete[] Body_neu;
   delete[] Header_neu;
+}
+void WebserverSensors(AsyncWebServerRequest *request)
+{
+  int countSensors = SensorPort1.GetSensorCount() + SensorPort2.GetSensorCount();
+  char *HTMLString = new char[(strlen(html_header) + 50)+(strlen(html_SEconfig1)+(countSensors * (strlen(html_SEconfig2) + 50))+strlen(html_SEconfig3))];
+  char *HTMLString2 = new char[(strlen(html_header) + 50)+(strlen(html_SEconfig1)+(countSensors * (strlen(html_SEconfig2) + 50))+strlen(html_SEconfig3))];
+  HTMLString2[0] = 0;
+  //Vorbereitung Datum
+  unsigned long epochTime = timeClient->getEpochTime();
+  struct tm *ptm = gmtime((time_t *)&epochTime);
+  int monthDay = ptm->tm_mday;
+  int currentMonth = ptm->tm_mon; // + 1;
+  int currentYear = ptm->tm_year; // + 1900;
+  sprintf(HTMLString, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear);
+  sprintf(HTMLString2, "%s%s", HTMLString, html_SEconfig1);
+  for(int i = 0; i < SensorPort1.GetSensorCount(); i++)
+  {
+    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort1.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort1.GetSensorIndex(i)->getTempC(), SensorPort1.GetSensorIndex(i)->getAddressUINT64(), 1, SensorPort1.GetSensorIndex(i)->getName().c_str(), SensorPort1.GetSensorIndex(i)->getAddressUINT64(), 1, SensorPort1.GetSensorIndex(i)->getOffset(), SensorPort1.GetSensorIndex(i)->getAddressUINT64(), 1, 0);
+    strcpy(HTMLString2, HTMLString);
+  }
+  for(int i = 0; i < SensorPort2.GetSensorCount(); i++)
+  {
+    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort2.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort2.GetSensorIndex(i)->getTempC(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, SensorPort2.GetSensorIndex(i)->getName().c_str(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, SensorPort1.GetSensorIndex(i)->getOffset(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, 0);
+    strcpy(HTMLString2, HTMLString);
+  }
+  sprintf(HTMLString, html_SEconfig3, HTMLString2);
+  request->send(200, "text/html", HTMLString);
+  delete[] HTMLString;
+  delete[] HTMLString2;
 }
 void WebserverPOST(AsyncWebServerRequest *request)
 {
