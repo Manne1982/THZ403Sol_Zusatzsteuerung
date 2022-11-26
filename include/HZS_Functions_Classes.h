@@ -1,6 +1,7 @@
 #ifndef Klassen_HZS
 #define Klassen_HZS
 #include <Arduino.h>
+#include "Class_DS18B20.h"
 
 struct NWConfig {
   //Einstellungen NW-Einstellungen WLAN
@@ -42,6 +43,20 @@ struct TempSensor{
 };
 
 
-#include "Klassen_HZS.cpp"
+//Input Output functions
+TempSensor * FindTempSensor(TempSensor * TSArray, uint8 ArrayLen, uint64 Address); //Get pointer of varibale with the same address, if nothing found return value 0
+TempSensor * GetFirstEmptyTS(TempSensor * TSArray, uint8 ArrayLen); //Get pointer of first unused variable, if no free variable found, return value 0
+void DelTSensor(uint64 Address, TempSensor * TSArray, uint8 ArrayLen);//Delete Sensor variables
+void DelTSensor(TempSensor * Sensor); //Delete Sensor variables
+void TakeoverTSConfig(TSensorArray * TSensArray, TempSensor * TSArray, uint8 ArrayLen); //Takeover saved config into TSensorArray variable and missing sensors from TSensorArray into saved config
+uint8 FindMissingSensors(TSensorArray * TSensArray1, TSensorArray * TSensArray2, TempSensor * *TSArrayMissing, TempSensor * TSArray, uint8 ArrayLen); //Function to find missing Sesnors into the config array, return value is the count of missing Sensors
+//General functions
+String IntToStr(int _var);
+String IntToStr(float _var);
+String IntToStrHex(int _var);
+String IntToStr(uint32_t _var);
+
+
+#include "HZS_Functions_Classes.cpp"
 
 #endif

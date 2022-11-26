@@ -6,7 +6,7 @@
 // enum {dtYear, dtMonth, dtDay}; //Tag = 2; Monat = 1; Jahr = 0
 const String WeekDays[7]={"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"};
 // //Allgemeine Definitionen
-enum {subwl = 27767, subnw = 30574, subcn = 20035, subpd = 17488, subps = 21328, sublf = 17996, sublm = 19788, submq = 29037}; //Zuordnung der Submit-Bereiche einer Ganzzahl
+enum {subwl = 27767, subnw = 30574, subcn = 20035, subpd = 17488, subps = 21328, sublf = 17996, sublm = 19788, submq = 29037, subPS = 21328, subSD = 17491}; //Zuordnung der Submit-Bereiche einer Ganzzahl
 enum {touchUp_wsgn = 33, touchDown_gn = 32, touchRight_wsbr = 15, touchLeft_br = 4, touchF1_bl = 13, touchF2_wsbl = 12, touchF3_or = 14, touchF4_wsor = 27, RGB_Red = 22, RGB_Green = 16, RGB_Blue = 17, Display_Beleuchtung = 21};
 enum {indexAGM = 0, indexLED = 1, indexProgStart = 2, indexNWK = 3};
 enum {NW_WiFi_AP = 0x01, NW_StaticIP = 0x02, NW_EthernetActive = 0x04, NW_MQTTActive = 0x08, NW_MQTTSecuree = 0x10}; //Enum for NWConfig
@@ -68,7 +68,7 @@ const char html_SEconfig1[] PROGMEM = R"rawliteral(
 const char html_SEconfig2[] PROGMEM = R"rawliteral(
   %s
   <TR>
-  <form action="/get">
+  <form method="post" action="/POST">
     <TD VALIGN="TOP">
 	  %s</TD>
     <TD VALIGN="TOP">
@@ -76,7 +76,7 @@ const char html_SEconfig2[] PROGMEM = R"rawliteral(
     <TD VALIGN="TOP">
 	  <input name="PS_%llu_%d_1" type="text" maxlength="14" size="15" value="%s" required="1"><br /><br /></TD>
     <TD VALIGN="TOP">
-	  <input name="PS_%llu_%d_2" type="number" min="-5" max="+5" step="0.1" maxlength="4" size="5" value="%0.1f" required="1"><br /><br /></TD>
+	  <input name="PS_%llu_%d_2" type="number" min="-5" max="+5" step="0.01" maxlength="4" size="5" value="%0.1f" required="1"><br /><br /></TD>
     <TD VALIGN="TOP">
 	  <input name="PS_%llu_%d_3" type="number" min="0" max="2" step="1" size="5" value="%u" list="SensorStates" required="1"><br /><br /></TD>
     <TD VALIGN="TOP">
@@ -84,28 +84,43 @@ const char html_SEconfig2[] PROGMEM = R"rawliteral(
   </form>
   </TR>
 )rawliteral";
-const char html_SEconfig2_1[] PROGMEM = R"rawliteral(
+const char html_SEconfig3[] PROGMEM = R"rawliteral(
+%s
+</TABLE>
+<hr>
+<h2>Fehlende Temperatursensoren</h2><br />
+<TABLE> <!-- 'border="1"-->
+  <TR>
+    <TD WIDTH="200" VALIGN="TOP">
+      <h3>Sensoradresse</h3> <br /></TD>
+    <TD WIDTH="150" VALIGN="TOP">
+	  <h3>Sensorname</h3></TD>
+    <TD WIDTH="120" VALIGN="TOP">
+	  <h3>Offset in °K</h3></TD>
+    <TD WIDTH="80" VALIGN="TOP">
+	  <h3>Aktiv</h3></TD>
+    <TD WIDTH="200" VALIGN="TOP">
+	  </TD>
+  </TR>
+)rawliteral";
+const char html_SEconfig4[] PROGMEM = R"rawliteral(
   %s
   <TR>
-  <form action="/get">
+  <form method="post" action="/POST">
     <TD VALIGN="TOP">
 	  %s</TD>
     <TD VALIGN="TOP">
-	  %f °C</TD>
+	  %s</TD>
     <TD VALIGN="TOP">
-	  <input name="PS_%llu_%u_1" type="text" maxlength="14" size="15" value="%s" required="1"><br /><br /></TD>
+	  %0.1f</TD>
     <TD VALIGN="TOP">
-	  <input name="PS_%llu_%u_2" type="number" min="-5" max="+5" step="0.1" maxlength="4" size="5" value="%f" required="1"><br /><br /></TD>
+	  %u</TD>
     <TD VALIGN="TOP">
-	  <input name="PS_%llu_%u_3" type="number" min="0" max="2" step="1" size="5" value="%u" list="SensorStates" required="1"><br /><br /></TD>
-    <TD VALIGN="TOP">
-	  <input type="reset"><input value="Submit" type="submit"></TD>
+	  <input type="hidden" name="SDelete" value="%llu"><input value="Delete" type="submit"></TD>
   </form>
   </TR>
 )rawliteral";
-
-
-const char html_SEconfig3[] PROGMEM = R"rawliteral(
+const char html_SEconfig5[] PROGMEM = R"rawliteral(
 %s
 </TABLE>
 <br />

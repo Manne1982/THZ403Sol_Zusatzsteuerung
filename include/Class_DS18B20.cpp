@@ -178,7 +178,7 @@ float TSensor::getTempC()
         Serial.print(" Celsius, ");
     #endif
     NewValue = false;
-    return (float)raw / 16.0;
+    return ((float)raw / 16.0)+TOffset;
 }
 
 void TSensor::setName(String NewName)
@@ -194,16 +194,6 @@ String TSensor::getName()
 }
 String TSensor::getAddressHEX()
 {
-/*    char Temp[20] = "";
-    for(int i = 0; i < 8; i++)
-    {
-        sprintf(&Temp[i*2], "%02X", addr[i]);
-    }
-    Temp[16]=0;
-    uint64 * Test = (uint64*) addr;
-    Serial.println(*Test);
-    return Temp;
-*/
     return convertUINT64toHEXstr((uint64*)addr);
 }
 uint64 TSensor::getAddressUINT64()
@@ -217,7 +207,8 @@ bool TSensor::NewValueAvailable()
 }
 void TSensor::setOffset(float TempOffset)
 {
-    TOffset = TempOffset;
+    if((TempOffset >= -5)&&(TempOffset <= 5))
+        TOffset = TempOffset;
 }
 float TSensor::getOffset()
 {
