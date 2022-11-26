@@ -19,7 +19,7 @@
 //Projektspezifisch
 #include "HTML_Var.h"
 #include "Class_DS18B20.h"
-#include "Klassen_HZS.h"
+#include "HZS_Functions_Classes.h"
 //Port extension
 #include <Adafruit_MCP23X17.h>
 
@@ -46,18 +46,12 @@ void ResetVarSpeichern(char Count);
 //MQTT functions
 bool MQTTinit();  //Wenn verbunden Rückgabewert true
 void MQTT_callback(char* topic, byte* payload, unsigned int length);
-//General functions
-String IntToStr(int _var);
-String IntToStr(float _var);
-String IntToStrHex(int _var);
-String IntToStr(uint32_t _var);
+
 
 //Projektvariablen
 NWConfig varConfig;
-digital_Output Outputs[8];  //Variable array for save Output Information.
-TempSensor TempSensors[10]; //Variable array for save Information about DS18B20 sensors.
-char EthernetMAC[] = "A0:A1:A2:A3:A4:A5";         //For Ethernet connection (MQTT)
-uint8_t mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5}; //For Ethernet connection
+char const EthernetMAC[] = "A0:A1:A2:A3:A4:A5";         //For Ethernet connection (MQTT)
+uint8_t const mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5}; //For Ethernet connection
 bool ESP_Restart = false;                         //Variable for a restart with delay in WWW Request
 unsigned long Break_h = 0;
 unsigned long Break_10s = 0;
@@ -74,8 +68,13 @@ PubSubClient * MQTTclient = 0;
 //Port extension
 Adafruit_MCP23X17 mcp[2];
 //Temperature sensors
+const uint8 MaxSensors = 15; 
 TSensorArray SensorPort1(9);
 TSensorArray SensorPort2(10);
+TempSensor TempSensors[MaxSensors]; //Variable array for save Information about DS18B20 sensors.
+//Output configuration
+digital_Output Outputs[8];  //Variable array for save Output Information.
+
 
 void setup(void) {
   pinMode(D3, INPUT); //Interrupt PIN for INTA MCP 1
@@ -94,6 +93,9 @@ void setup(void) {
     if(!EinstLaden()) //If failure then standard config will be saved
       EinstSpeichern();
   ResetVarSpeichern(0);
+  TakeoverTSConfig(&SensorPort1, TempSensors, MaxSensors);
+  TakeoverTSConfig(&SensorPort2, TempSensors, MaxSensors);
+  EinstSpeichern();
   NetworkInit(); //Initialization of WiFi, Ethernet and MQTT
   //Zeitserver Einstellungen
   if (strlen(varConfig.NW_NTPServer))
@@ -320,9 +322,6 @@ bool EinstLaden()
   EEPROM.get(sizeof(varConfigTest) + 1, ChecksummeEEPROM);
   EEPROM.get(sizeof(varConfig) + 3, Outputs);
   EEPROM.get(sizeof(varConfig) + sizeof(Outputs) + 4, TempSensors);
-
-  EEPROM.get(0, varConfig); //Nur für die Speicherumstellung
-
   for (unsigned int i = 0; i < sizeof(varConfigTest); i++)
     Checksumme += pointer[i];
   if ((Checksumme == ChecksummeEEPROM) && (Checksumme != 0))
@@ -477,7 +476,6 @@ bool WIFIConnectionCheck(bool with_reconnect = true)
 }
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
-//---------------------------------------------------------------------
 //WebServer Functions
 void notFound(AsyncWebServerRequest *request)
 {
@@ -515,7 +513,10 @@ void WebserverRoot(AsyncWebServerRequest *request)
 void WebserverSensors(AsyncWebServerRequest *request)
 {
   int countSensors = SensorPort1.GetSensorCount() + SensorPort2.GetSensorCount();
+  TempSensor * MissingSensors[MaxSensors];
+  uint8 countMissingSensors = FindMissingSensors(&SensorPort1, &SensorPort2, MissingSensors, TempSensors, MaxSensors);
   uint16 StringLen = (strlen(html_header) + 50)+strlen(html_SEconfig1)+(countSensors * (strlen(html_SEconfig2) + 100))+strlen(html_SEconfig3);
+  StringLen += ((strlen(html_SEconfig4)+100)*countMissingSensors) + strlen(html_SEconfig5);
   char *HTMLString = new char[StringLen];
   char *HTMLString2 = new char[StringLen];
   //Vorbereitung Datum
@@ -536,9 +537,14 @@ void WebserverSensors(AsyncWebServerRequest *request)
     sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort2.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort2.GetSensorIndex(i)->getTempC(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, SensorPort2.GetSensorIndex(i)->getName().c_str(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, SensorPort2.GetSensorIndex(i)->getOffset(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, 0);
     strcpy(HTMLString2, HTMLString);
   }
-  
   sprintf(HTMLString, html_SEconfig3, HTMLString2);
-  request->send(200, "text/html", HTMLString);
+  for(int i = 0; i < countMissingSensors; i++)
+  {
+    sprintf(HTMLString2, html_SEconfig4, HTMLString, convertUINT64toHEXstr(&MissingSensors[i]->Address).c_str(), MissingSensors[i]->Name, MissingSensors[i]->Offset, MissingSensors[i]->SensorState, MissingSensors[i]->Address);
+    strcpy(HTMLString, HTMLString2);  
+  }
+  sprintf(HTMLString2, html_SEconfig5, HTMLString);
+  request->send(200, "text/html", HTMLString2);
   delete[] HTMLString;
   delete[] HTMLString2;
 }
@@ -553,6 +559,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
     {
     case subwl:
       varConfig.NW_Flags &= ~NW_WiFi_AP;
+      if(parameter <= 3)
       for (int i = 0; i < parameter; i++)
       {
         if (request->getParam(i)->name() == "wlAP")
@@ -595,6 +602,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
       String tmp_NTPServer;
       String tmp_NetzName;
       int tmp_NTPOffset;
+      if(parameter < 11)
       for (int i = 0; i < parameter; i++)
       {
         if (request->getParam(i)->name() == "nwEthernetOn")
@@ -654,6 +662,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
     {
       char tmp_MQTTOn = 0;
       String Temp[6];
+      if(parameter <= 6)
       for (int i = 0; i < parameter; i++)
       {
         if (request->getParam(i)->name() == "mqMQTTOn")
@@ -695,6 +704,92 @@ void WebserverPOST(AsyncWebServerRequest *request)
       EinstSpeichern();
       request->send_P(200, "text/html", "MQTT Daten wurden uebernommen, ESP wird neu gestartet!<br><meta http-equiv=\"refresh\" content=\"20; URL=\\\">"); //<a href=\>Startseite</a>
       ESP_Restart = true;
+      break;
+    }               
+    case subPS:
+    {
+      uint64 Address = 0;
+      int Port = 0;
+      int Value = 0;
+      float TempOffset = 0;
+      unsigned int Temp = 0;
+      for (int i = 0; i < parameter; i++)
+      {
+        if(sscanf(request->getParam(i)->name().c_str(), "PS_%llu_%d_%d", &Address, &Port, &Value) != 3)
+        {
+          Serial.println(sscanf(request->getParam(i)->name().c_str(), "PS_%llu_%d_%d", &Address, &Port, &Value));
+          Serial.println(request->getParam(i)->name());
+          Serial.println(Address);
+          Serial.println(Port);
+          Serial.println(Value);
+          
+          request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+          return;
+        }
+        switch(Value)
+        {
+          case 1:
+            if(request->getParam(i)->value().length()>15)
+            {
+              request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              return;
+            }
+            strcpy(FindTempSensor(TempSensors, MaxSensors, Address)->Name, request->getParam(i)->value().c_str());
+            if(Port == 1)
+              SensorPort1.GetSensorAddr(Address)->setName(request->getParam(i)->value());
+            else
+              SensorPort2.GetSensorAddr(Address)->setName(request->getParam(i)->value());
+            break;
+          case 2:
+            if(sscanf(request->getParam(i)->value().c_str(),"%f", &TempOffset)!=1)
+            {
+              request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              return;
+            }
+            FindTempSensor(TempSensors, MaxSensors, Address)->Offset = TempOffset;
+            if(Port == 1)
+              SensorPort1.GetSensorAddr(Address)->setOffset(TempOffset);
+            else
+              SensorPort2.GetSensorAddr(Address)->setOffset(TempOffset);
+            break;
+          case 3:
+            if(sscanf(request->getParam(i)->value().c_str(),"%u", &Temp)!=1)
+            {
+              request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              return;
+            }
+            FindTempSensor(TempSensors, MaxSensors, Address)->SensorState = Temp;
+            if(Port == 1)
+              SensorPort1.GetSensorAddr(Address)->setOffset(Temp);
+            else
+              SensorPort2.GetSensorAddr(Address)->setOffset(Temp);
+            break;
+          default:
+            request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+            return;
+        }
+      }
+    }
+    case subSD:
+    {
+      uint64 Address = 0;
+      TempSensor * Temp = 0;
+      if((parameter > 1)||(request->getParam(0)->name()!="SDelete")||(sscanf(request->getParam(0)->value().c_str(),"%llu", &Address)!=1))
+      {
+        request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+        return;
+      }
+      Serial.println(parameter);
+      Serial.println(request->getParam(0)->name());
+      Serial.println((uint32) Address);
+      Serial.println(request->getParam(0)->value());
+
+      Temp = FindTempSensor(TempSensors, MaxSensors, Address);
+      if(Temp)
+      DelTSensor(Temp);
+      EinstSpeichern();
+      request->send_P(200, "text/html", "Sensor wurde gelöscht!<br><meta http-equiv=\"refresh\" content=\"20; URL=\\\">"); //<a href=\>Startseite</a>
+      //ESP_Restart = true;
       break;
     }               
     default:
