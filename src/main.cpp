@@ -12,6 +12,7 @@
 #include <PubSubClient.h>
 //für Uhrzeitabruf notwendig
 #include <NTPClient.h>
+#include "time.h"
 //Allgemeine Bibliotheken
 #include <string.h>
 #include <EEPROM.h>
@@ -488,11 +489,12 @@ void WebserverRoot(AsyncWebServerRequest *request)
   char *Body_neu = new char[(strlen(html_NWconfig)+750)];
   char *HTMLString = new char[(strlen(html_header) + 50)+(strlen(html_NWconfig)+750)];
   //Vorbereitung Datum
-  unsigned long epochTime = timeClient->getEpochTime();
+  unsigned long long epochTime = timeClient->getEpochTime();
   struct tm *ptm = gmtime((time_t *)&epochTime);
   int monthDay = ptm->tm_mday;
-  int currentMonth = ptm->tm_mon; // + 1;
-  int currentYear = ptm->tm_year; // + 1900;
+  int currentMonth = ptm->tm_mon + 1;
+  int currentYear = ptm->tm_year + 1900;
+
   char *pntSelected[5];
   for (int i = 0; i < 5; i++)
     if (i == (varConfig.NW_NTPOffset + 2))
@@ -519,22 +521,22 @@ void WebserverSensors(AsyncWebServerRequest *request)
   StringLen += ((strlen(html_SEconfig4)+100)*countMissingSensors) + strlen(html_SEconfig5);
   char *HTMLString = new char[StringLen];
   char *HTMLString2 = new char[StringLen];
-  //Vorbereitung Datum
-  unsigned long epochTime = timeClient->getEpochTime();
+  //Vorbereitung Datum 
+  unsigned long long epochTime = timeClient->getEpochTime();
   struct tm *ptm = gmtime((time_t *)&epochTime);
   int monthDay = ptm->tm_mday;
-  int currentMonth = ptm->tm_mon; // + 1;
-  int currentYear = ptm->tm_year; // + 1900;
+  int currentMonth = ptm->tm_mon + 1;
+  int currentYear = ptm->tm_year + 1900;
   sprintf(HTMLString, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear);
   sprintf(HTMLString2, "%s%s", HTMLString, html_SEconfig1);
   for(int i = 0; i < SensorPort1.GetSensorCount(); i++)
   {
-    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort1.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort1.GetSensorIndex(i)->getTempC(), SensorPort1.GetSensorIndex(i)->getAddressUINT64(), 1, SensorPort1.GetSensorIndex(i)->getName().c_str(), SensorPort1.GetSensorIndex(i)->getAddressUINT64(), 1, SensorPort1.GetSensorIndex(i)->getOffset(), SensorPort1.GetSensorIndex(i)->getAddressUINT64(), 1, 0);
+    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort1.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort1.GetSensorIndex(i)->getTempC(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), SensorPort1.GetSensorIndex(i)->getName().c_str(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), SensorPort1.GetSensorIndex(i)->getOffset(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), FindTempSensor(TempSensors, MaxSensors, SensorPort1.GetSensorIndex(i)->getAddressUINT64())->SensorState);
     strcpy(HTMLString2, HTMLString);
   }
   for(int i = 0; i < SensorPort2.GetSensorCount(); i++)
   {
-    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort2.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort2.GetSensorIndex(i)->getTempC(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, SensorPort2.GetSensorIndex(i)->getName().c_str(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, SensorPort2.GetSensorIndex(i)->getOffset(), SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 2, 0);
+    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort2.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort2.GetSensorIndex(i)->getTempC(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(), SensorPort2.GetSensorIndex(i)->getName().c_str(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(), SensorPort2.GetSensorIndex(i)->getOffset(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(), FindTempSensor(TempSensors, MaxSensors, SensorPort2.GetSensorIndex(i)->getAddressUINT64())->SensorState);
     strcpy(HTMLString2, HTMLString);
   }
   sprintf(HTMLString, html_SEconfig3, HTMLString2);
@@ -715,23 +717,18 @@ void WebserverPOST(AsyncWebServerRequest *request)
       unsigned int Temp = 0;
       for (int i = 0; i < parameter; i++)
       {
-        if(sscanf(request->getParam(i)->name().c_str(), "PS_%llu_%d_%d", &Address, &Port, &Value) != 3)
-        {
-          Serial.println(sscanf(request->getParam(i)->name().c_str(), "PS_%llu_%d_%d", &Address, &Port, &Value));
-          Serial.println(request->getParam(i)->name());
-          Serial.println(Address);
-          Serial.println(Port);
-          Serial.println(Value);
-          
-          request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+        if(sscanf(request->getParam(i)->name().c_str(), "PS_%d_%d_", &Port, &Value) != 2)
+        {          
+          request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 720<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
           return;
         }
+        Address = StrToLongInt(request->getParam(i)->name().substring(6));
         switch(Value)
         {
           case 1:
             if(request->getParam(i)->value().length()>15)
             {
-              request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 729<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
               return;
             }
             strcpy(FindTempSensor(TempSensors, MaxSensors, Address)->Name, request->getParam(i)->value().c_str());
@@ -743,7 +740,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
           case 2:
             if(sscanf(request->getParam(i)->value().c_str(),"%f", &TempOffset)!=1)
             {
-              request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 741<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
               return;
             }
             FindTempSensor(TempSensors, MaxSensors, Address)->Offset = TempOffset;
@@ -755,40 +752,39 @@ void WebserverPOST(AsyncWebServerRequest *request)
           case 3:
             if(sscanf(request->getParam(i)->value().c_str(),"%u", &Temp)!=1)
             {
-              request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 753<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
               return;
             }
             FindTempSensor(TempSensors, MaxSensors, Address)->SensorState = Temp;
-            if(Port == 1)
-              SensorPort1.GetSensorAddr(Address)->setOffset(Temp);
-            else
-              SensorPort2.GetSensorAddr(Address)->setOffset(Temp);
             break;
           default:
-            request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+            request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 763<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
             return;
         }
       }
+      EinstSpeichern();
+      request->send_P(200, "text/html", "Sensordaten wurden uebernommen!<br><meta http-equiv=\"refresh\" content=\"5; URL=\\\">"); //<a href=\>Startseite</a>
+      break;
     }
     case subSD:
     {
-      uint64 Address = 0;
-      TempSensor * Temp = 0;
-      if((parameter > 1)||(request->getParam(0)->name()!="SDelete")||(sscanf(request->getParam(0)->value().c_str(),"%llu", &Address)!=1))
+      if((parameter > 1)||(request->getParam(0)->name()!="SDelete"))
       {
-        request->send_P(200, "text/html", "Unbekannter Rueckgabewert<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+        request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 772<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
         return;
       }
+      TempSensor * Temp = 0;
+      uint64 Address = StrToLongInt(request->getParam(0)->value());
       Serial.println(parameter);
       Serial.println(request->getParam(0)->name());
-      Serial.println((uint32) Address);
+      Serial.println(Address);
       Serial.println(request->getParam(0)->value());
 
       Temp = FindTempSensor(TempSensors, MaxSensors, Address);
       if(Temp)
       DelTSensor(Temp);
       EinstSpeichern();
-      request->send_P(200, "text/html", "Sensor wurde gelöscht!<br><meta http-equiv=\"refresh\" content=\"20; URL=\\\">"); //<a href=\>Startseite</a>
+      request->send_P(200, "text/html", "Sensor wurde gelöscht!<br><meta http-equiv=\"refresh\" content=\"5; URL=\\\">"); //<a href=\>Startseite</a>
       //ESP_Restart = true;
       break;
     }               

@@ -80,6 +80,36 @@ uint8 FindMissingSensors(TSensorArray * TSensArray1, TSensorArray * TSensArray2,
   return CounterMissingSens;
 }
 //---------------------------------------------------------------------
+uint64 StrToLongInt(String Input)
+{
+  int Start = -1, Stop = Input.length()-1;
+  uint64 Temp = 0, Multi = 1;
+  for(unsigned int i = 0; i < Input.length(); i++)
+  {
+    bool Zahl = false;
+    if((Input[i] >='0')&&(Input[i] <= '9'))
+      Zahl = true;
+    if(Start == -1)
+    {
+      if(Zahl)
+        Start = i;
+    }
+    else
+    {
+      if(!Zahl)
+      {
+        Stop = i-1;
+        break;
+      }
+    }
+  }
+  for(int i = Stop; i >= Start; i--)
+  {
+    Temp += (Input[i]-'0')*Multi;
+    Multi *=10;
+  }
+  return Temp;
+}
 String IntToStr(int _var)
 {
     char Temp[20];

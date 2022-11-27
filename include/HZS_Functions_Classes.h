@@ -51,6 +51,7 @@ void DelTSensor(TempSensor * Sensor); //Delete Sensor variables
 void TakeoverTSConfig(TSensorArray * TSensArray, TempSensor * TSArray, uint8 ArrayLen); //Takeover saved config into TSensorArray variable and missing sensors from TSensorArray into saved config
 uint8 FindMissingSensors(TSensorArray * TSensArray1, TSensorArray * TSensArray2, TempSensor * *TSArrayMissing, TempSensor * TSArray, uint8 ArrayLen); //Function to find missing Sesnors into the config array, return value is the count of missing Sensors
 //General functions
+uint64 StrToLongInt(String Input);
 String IntToStr(int _var);
 String IntToStr(float _var);
 String IntToStrHex(int _var);
