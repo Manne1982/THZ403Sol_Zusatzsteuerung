@@ -2,6 +2,9 @@
 #define Klassen_HZS
 #include <Arduino.h>
 #include "Class_DS18B20.h"
+#include <Adafruit_MCP23X17.h>
+#define MCPPort0 39
+#define MCPPort1 38
 
 struct NWConfig {
   //Einstellungen NW-Einstellungen WLAN
@@ -29,9 +32,6 @@ struct NWConfig {
 struct digital_Output{
   char Name[15]="unnamed";
   byte StartValue = 2; //0 = off; 1 = on; 2 = Auto
-  byte MCP = 0;     //0 = MCP one Address 38; 1 = MCP two Address 39
-  byte MCP_Pin_Auto = 0; //associated Pin in MCP-Modul. (1 - 16) for switch between manuel or automatic
-  byte MCP_Pin_OnOff = 0; //associated Pin in MCP-Modul. (1 - 16) for switch in manuel mode on or off
   byte MQTTState = 0; //0 = MQTT control off; 1 = MQTT control on
 };
 
@@ -50,6 +50,8 @@ void DelTSensor(uint64 Address, TempSensor * TSArray, uint8 ArrayLen);//Delete S
 void DelTSensor(TempSensor * Sensor); //Delete Sensor variables
 void TakeoverTSConfig(TSensorArray * TSensArray, TempSensor * TSArray, uint8 ArrayLen); //Takeover saved config into TSensorArray variable and missing sensors from TSensorArray into saved config
 uint8 FindMissingSensors(TSensorArray * TSensArray1, TSensorArray * TSensArray2, TempSensor * *TSArrayMissing, TempSensor * TSArray, uint8 ArrayLen); //Function to find missing Sesnors into the config array, return value is the count of missing Sensors
+int MCPSetup(Adafruit_MCP23X17 * MCP, int MCPAddress);
+void MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates);
 //General functions
 uint64 StrToLongInt(String Input);
 String IntToStr(int _var);

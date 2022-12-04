@@ -38,6 +38,7 @@ void notFound(AsyncWebServerRequest *request);
 void WebserverRoot(AsyncWebServerRequest *request); 
 void WebserverPOST(AsyncWebServerRequest *request);
 void WebserverSensors(AsyncWebServerRequest *request);
+void WebserverOutput(AsyncWebServerRequest *request);
 
 //Functions for saving settings
 void EinstSpeichern();
@@ -66,15 +67,18 @@ NTPClient * timeClient = 0;
 EthernetClient * e_client = 0;
 WiFiClient * wifiClient;
 PubSubClient * MQTTclient = 0;
-//Port extension
-Adafruit_MCP23X17 mcp[2];
 //Temperature sensors
 const uint8 MaxSensors = 15; 
 TSensorArray SensorPort1(9);
 TSensorArray SensorPort2(10);
 TempSensor TempSensors[MaxSensors]; //Variable array for save Information about DS18B20 sensors.
+//Port extension
+Adafruit_MCP23X17 mcp[2];
+int MCPState[2] = {0, 0}; //0 = not connected, 1 = connected, 2 = error
 //Output configuration
 digital_Output Outputs[8];  //Variable array for save Output Information.
+uint16 Outputstates = 0xFFFF;
+
 
 
 void setup(void) {
@@ -123,36 +127,11 @@ void setup(void) {
   server.onNotFound(notFound);
   server.on("/", HTTP_GET, WebserverRoot);
   server.on("/Sensors", HTTP_GET, WebserverSensors);
+  server.on("/Output", HTTP_GET, WebserverOutput);
   server.on("/POST", HTTP_POST, WebserverPOST);
   
   //Port Extension
-  if (!mcp[0].begin_I2C(38)) {
-    #ifdef BGTDEBUG
-      Serial.println("MCP 38 not connected!");
-    #endif
-  }
-  else{
-    #ifdef BGTDEBUG
-      Serial.println("MCP 38 connected!");
-    #endif
-  }
-  if (!mcp[1].begin_I2C(39)) {
-    #ifdef BGTDEBUG
-      Serial.println("MCP 39 not connected!");
-    #endif
-  }
-  else{
-    #ifdef BGTDEBUG
-      Serial.println("MCP 39 connected!");
-    #endif
-  }
-  //configure all pin for output MCP 2 and input for MCP 1
-  for(int i =0; i <16; i++)
-  {
-    mcp[0].pinMode(i, INPUT_PULLUP);
-    mcp[0].setupInterruptPin(i, CHANGE);
-    mcp[1].pinMode(i, OUTPUT);
-  }
+  MCPinit(mcp, MCPState);
 }
 void loop(void) {
   //OTA
@@ -518,7 +497,7 @@ void WebserverSensors(AsyncWebServerRequest *request)
   TempSensor * MissingSensors[MaxSensors];
   uint8 countMissingSensors = FindMissingSensors(&SensorPort1, &SensorPort2, MissingSensors, TempSensors, MaxSensors);
   uint16 StringLen = (strlen(html_header) + 50)+strlen(html_SEconfig1)+(countSensors * (strlen(html_SEconfig2) + 100))+strlen(html_SEconfig3);
-  StringLen += ((strlen(html_SEconfig4)+100)*countMissingSensors) + strlen(html_SEconfig5);
+  StringLen += ((strlen(html_SEconfig4)+100)*countMissingSensors) + strlen(html_OPSEfooter);
   char *HTMLString = new char[StringLen];
   char *HTMLString2 = new char[StringLen];
   //Vorbereitung Datum 
@@ -545,7 +524,30 @@ void WebserverSensors(AsyncWebServerRequest *request)
     sprintf(HTMLString2, html_SEconfig4, HTMLString, convertUINT64toHEXstr(&MissingSensors[i]->Address).c_str(), MissingSensors[i]->Name, MissingSensors[i]->Offset, MissingSensors[i]->SensorState, MissingSensors[i]->Address);
     strcpy(HTMLString, HTMLString2);  
   }
-  sprintf(HTMLString2, html_SEconfig5, HTMLString);
+  sprintf(HTMLString2, html_OPSEfooter, HTMLString);
+  request->send(200, "text/html", HTMLString2);
+  delete[] HTMLString;
+  delete[] HTMLString2;
+}
+void WebserverOutput(AsyncWebServerRequest *request)
+{
+  uint16 StringLen = (strlen(html_header) + 50)+strlen(html_OPconfig1)+(8 * (strlen(html_OPconfig2) + 100)) + strlen(html_OPSEfooter);
+  char *HTMLString = new char[StringLen];
+  char *HTMLString2 = new char[StringLen];
+  //Vorbereitung Datum 
+  unsigned long long epochTime = timeClient->getEpochTime();
+  struct tm *ptm = gmtime((time_t *)&epochTime);
+  int monthDay = ptm->tm_mday;
+  int currentMonth = ptm->tm_mon + 1;
+  int currentYear = ptm->tm_year + 1900;
+  sprintf(HTMLString, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear);
+  sprintf(HTMLString2, "%s%s", HTMLString, html_OPconfig1);
+  for(int i = 0; i < 8; i++)
+  {
+    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, Outputs[i].Name, "Akt Status", i, Outputs[i].StartValue, i, Un_Checked[Outputs[i].MQTTState%2].c_str());
+    strcpy(HTMLString2, HTMLString);
+  }
+  sprintf(HTMLString2, html_OPSEfooter, HTMLString);
   request->send(200, "text/html", HTMLString2);
   delete[] HTMLString;
   delete[] HTMLString2;
@@ -763,7 +765,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
         }
       }
       EinstSpeichern();
-      request->send_P(200, "text/html", "Sensordaten wurden uebernommen!<br><meta http-equiv=\"refresh\" content=\"5; URL=\\\">"); //<a href=\>Startseite</a>
+      request->send_P(200, "text/html", "Sensordaten wurden uebernommen!<br><meta http-equiv=\"refresh\" content=\"5; URL=/Sensors/\">"); //<a href=\>Startseite</a>
       break;
     }
     case subSD:
@@ -775,19 +777,70 @@ void WebserverPOST(AsyncWebServerRequest *request)
       }
       TempSensor * Temp = 0;
       uint64 Address = StrToLongInt(request->getParam(0)->value());
-      Serial.println(parameter);
-      Serial.println(request->getParam(0)->name());
-      Serial.println(Address);
-      Serial.println(request->getParam(0)->value());
-
       Temp = FindTempSensor(TempSensors, MaxSensors, Address);
       if(Temp)
       DelTSensor(Temp);
       EinstSpeichern();
-      request->send_P(200, "text/html", "Sensor wurde gelöscht!<br><meta http-equiv=\"refresh\" content=\"5; URL=\\\">"); //<a href=\>Startseite</a>
+      request->send_P(200, "text/html", "Sensor wurde geloescht!<br><meta http-equiv=\"refresh\" content=\"5; URL=/Sensors/\">"); //<a href=\>Startseite</a>
       //ESP_Restart = true;
       break;
-    }               
+    }   
+    case subSS:
+    {
+      SensorPort1.SensorSearch();
+      SensorPort2.SensorSearch();
+      TakeoverTSConfig(&SensorPort1, TempSensors, MaxSensors);
+      TakeoverTSConfig(&SensorPort2, TempSensors, MaxSensors);
+      request->send_P(200, "text/html", "Sensoren wurden neu eingelesen!<br><meta http-equiv=\"refresh\" content=\"5; URL=/Sensors/\">"); //<a href=\>Startseite</a>
+      break;
+    }            
+    case subOS:
+    {
+      int Port = 0;
+      int Value = 0;
+      for (int i = 0; i < parameter; i++)
+      {
+        if(sscanf(request->getParam(i)->name().c_str(), "OS_%d_%d_", &Port, &Value) != 2)
+        {          
+          request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 808<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+          return;
+        }
+        Outputs[i].MQTTState = 0;
+        switch(Value)
+        {
+          case 1:
+            if(request->getParam(i)->value().length()>15)
+            {
+              request->send_P(200, "text/html", "Name zu lang Index 817<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              return;
+            }
+            strcpy(Outputs[Port].Name, request->getParam(i)->value().c_str());
+            break;
+          case 2:
+            if((request->getParam(i)->value().toInt() > 2) || (request->getParam(i)->value().toInt() < 0))
+            {
+              request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 824<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              return;
+            }
+            Outputs[i].StartValue = request->getParam(i)->value().toInt();
+            break;
+          case 3:
+            if(request->getParam(i)->value()!="on")
+            {
+              request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 753<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              return;
+            }
+            Outputs->MQTTState = 1;
+            break;
+          default:
+            request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 763<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+            return;
+        }
+      }
+      EinstSpeichern();
+      request->send_P(200, "text/html", "Relaiseinstellungen wurden uebernommen!<br><meta http-equiv=\"refresh\" content=\"5; URL=/Sensors/\">"); //<a href=\>Startseite</a>
+      break;
+   }            
     default:
       char strFailure[50];
       sprintf(strFailure, "Anweisung unbekannt, Empfangen: %u", *submitBereich);

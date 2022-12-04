@@ -79,6 +79,35 @@ uint8 FindMissingSensors(TSensorArray * TSensArray1, TSensorArray * TSensArray2,
   }
   return CounterMissingSens;
 }
+int MCPSetup(Adafruit_MCP23X17 * MCP, int MCPAddress)
+{
+  if (!MCP->begin_I2C(MCPAddress)) {
+    return 2;
+    #ifdef BGTDEBUG
+      Serial.println("MCP 39 (Outputs) not connected!");
+    #endif
+  }
+  else{
+    return 1;
+    #ifdef BGTDEBUG
+      Serial.println("MCP 39 (Outputs) connected!");
+    #endif
+  }
+  return 0;
+}
+void MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates)
+{
+  MCPStates[0] = MCPSetup(&MCP[0], MCPPort0);
+  MCPStates[1] = MCPSetup(&MCP[1], MCPPort1);
+  for(int i =0; i <16; i++)
+  {
+    MCP[0].pinMode(i, OUTPUT);
+    MCP[1].pinMode(i, INPUT_PULLUP);
+    MCP[1].setupInterruptPin(i, CHANGE);
+  }
+  MCP[0].writeGPIOAB(0xFFFF); //Set all outputs on High to put off the relaises
+}
+
 //---------------------------------------------------------------------
 uint64 StrToLongInt(String Input)
 {

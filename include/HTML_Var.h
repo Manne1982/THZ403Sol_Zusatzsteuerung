@@ -6,7 +6,7 @@
 // enum {dtYear, dtMonth, dtDay}; //Tag = 2; Monat = 1; Jahr = 0
 const String WeekDays[7]={"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"};
 // //Allgemeine Definitionen
-enum {subwl = 27767, subnw = 30574, subcn = 20035, subpd = 17488, subps = 21328, sublf = 17996, sublm = 19788, submq = 29037, subPS = 21328, subSD = 17491}; //Zuordnung der Submit-Bereiche einer Ganzzahl
+enum {subwl = 27767, subnw = 30574, subcn = 20035, subpd = 17488, subps = 21328, sublf = 17996, sublm = 19788, submq = 29037, subPS = 21328, subSD = 17491, subSS = 21331, subOS = 21327}; //Zuordnung der Submit-Bereiche einer Ganzzahl
 enum {touchUp_wsgn = 33, touchDown_gn = 32, touchRight_wsbr = 15, touchLeft_br = 4, touchF1_bl = 13, touchF2_wsbl = 12, touchF3_or = 14, touchF4_wsor = 27, RGB_Red = 22, RGB_Green = 16, RGB_Blue = 17, Display_Beleuchtung = 21};
 enum {indexAGM = 0, indexLED = 1, indexProgStart = 2, indexNWK = 3};
 enum {NW_WiFi_AP = 0x01, NW_StaticIP = 0x02, NW_EthernetActive = 0x04, NW_MQTTActive = 0x08, NW_MQTTSecuree = 0x10}; //Enum for NWConfig
@@ -48,6 +48,9 @@ const char html_SEconfig1[] PROGMEM = R"rawliteral(
 </datalist>
 
 <h2>Temperatursensoren</h2><br />
+<form method="post" action="/POST">
+<input type="hidden" name="SSearch" value="all"><input value="Sensorsuche" type="submit">
+</form>
 <TABLE> <!-- 'border="1"-->
   <TR>
     <TD WIDTH="200" VALIGN="TOP">
@@ -120,7 +123,7 @@ const char html_SEconfig4[] PROGMEM = R"rawliteral(
   </form>
   </TR>
 )rawliteral";
-const char html_SEconfig5[] PROGMEM = R"rawliteral(
+const char html_OPSEfooter[] PROGMEM = R"rawliteral(
 %s
 </TABLE>
 <br />
@@ -128,8 +131,46 @@ const char html_SEconfig5[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
-const char html_OPconfig[] PROGMEM = R"rawliteral(
-
+const char html_OPconfig1[] PROGMEM = R"rawliteral(
+<h1>Relais Einstellungen</h1><hr>
+<datalist id="OutputStates">
+  <option value="0">Aus</option>
+  <option value="1">An</option>
+  <option value="2">Automatik</option>
+</datalist>
+<TABLE> <!-- 'border="1"-->
+  <TR>
+    <TD WIDTH="100" VALIGN="TOP">
+      <h3>Ausgang</h3> <br /></TD>
+    <TD WIDTH="200" VALIGN="TOP">
+      <h3>Bezeichnung</h3> <br /></TD>
+    <TD WIDTH="150" VALIGN="TOP">
+	  <h3>Aktueller Status</h3></TD>
+    <TD WIDTH="150" VALIGN="TOP">
+	  <h3>Anfangsstatus</h3></TD>
+    <TD WIDTH="80" VALIGN="TOP">
+	  <h3>Aktiv</h3></TD>
+    <TD WIDTH="200" VALIGN="TOP">
+	  </TD>
+  </TR>
+)rawliteral";
+const char html_OPconfig2[] PROGMEM = R"rawliteral(
+%s  <TR>
+  <form method="post" action="/POST">
+    <TD VALIGN="TOP">
+	  %d</TD>
+    <TD VALIGN="TOP">
+	  <input name="OS_%d_1" type="text" maxlength="14" size="15" value="%s" required="1"><br /><br /></TD>
+    <TD VALIGN="TOP">
+	  %s</TD>
+    <TD VALIGN="TOP">
+	  <input name="OS_%d_2" type="number" min="0" max="2" step="1" size="5" value="%d" list="OutputStates" required="1"><br /><br /></TD>
+    <TD VALIGN="TOP">
+	  <input name="OS_%d_3" %s type="checkbox"><br /><br /></TD>
+    <TD VALIGN="TOP">
+	  <input type="reset"><input value="Submit" type="submit"></TD>
+  </form>
+  </TR>
 )rawliteral";
 
 
