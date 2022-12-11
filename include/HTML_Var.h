@@ -145,9 +145,11 @@ const char html_OPconfig1[] PROGMEM = R"rawliteral(
     <TD WIDTH="200" VALIGN="TOP">
       <h3>Bezeichnung</h3> <br /></TD>
     <TD WIDTH="150" VALIGN="TOP">
-	  <h3>Aktueller Status</h3></TD>
+	  <h3>Aktueller Modus</h3></TD>
     <TD WIDTH="150" VALIGN="TOP">
-	  <h3>Anfangsstatus</h3></TD>
+	  <h3>Heizung ist als %</h3></TD>
+    <TD WIDTH="150" VALIGN="TOP">
+	  <h3>Anfangsmodus</h3></TD>
     <TD WIDTH="80" VALIGN="TOP">
 	  <h3>Aktiv</h3></TD>
     <TD WIDTH="200" VALIGN="TOP">
@@ -161,6 +163,8 @@ const char html_OPconfig2[] PROGMEM = R"rawliteral(
 	  %d</TD>
     <TD VALIGN="TOP">
 	  <input name="OS_%d_1" type="text" maxlength="14" size="15" value="%s" required="1"><br /><br /></TD>
+    <TD VALIGN="TOP">
+	  %s</TD>
     <TD VALIGN="TOP">
 	  %s</TD>
     <TD VALIGN="TOP">
@@ -197,7 +201,7 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
     <TD VALIGN="TOP">
       Passwort: </TD>
   <TD>
-    <input name="wlPassword" type="password" minlength="8" maxlength="60" size="35"><br /><br /></TD>
+    <input name="wlPassword" type="password" value="xxxxxx" minlength="8" maxlength="60" size="35"><br /><br /></TD>
   </TR>
 </TABLE>
   <BR>

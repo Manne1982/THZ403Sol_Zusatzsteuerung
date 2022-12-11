@@ -5,6 +5,11 @@
 #include <Adafruit_MCP23X17.h>
 #define MCPPort0 39
 #define MCPPort1 38
+#define MCPOutput 0
+#define MCPInput 1
+#define INTPortA D3
+#define INTPortB D4
+
 
 struct NWConfig {
   //Einstellungen NW-Einstellungen WLAN
@@ -51,7 +56,9 @@ void DelTSensor(TempSensor * Sensor); //Delete Sensor variables
 void TakeoverTSConfig(TSensorArray * TSensArray, TempSensor * TSArray, uint8 ArrayLen); //Takeover saved config into TSensorArray variable and missing sensors from TSensorArray into saved config
 uint8 FindMissingSensors(TSensorArray * TSensArray1, TSensorArray * TSensArray2, TempSensor * *TSArrayMissing, TempSensor * TSArray, uint8 ArrayLen); //Function to find missing Sesnors into the config array, return value is the count of missing Sensors
 int MCPSetup(Adafruit_MCP23X17 * MCP, int MCPAddress);
-void MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates);
+uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates);
+uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates); //MCPStates: 0= Not initiated, 1= connected, 2 = error
+
 //General functions
 uint64 StrToLongInt(String Input);
 String IntToStr(int _var);

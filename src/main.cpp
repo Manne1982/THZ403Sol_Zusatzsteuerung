@@ -27,6 +27,7 @@
 
 #define BGTDEBUG 1
 
+
 //Funktionsdefinitionen
 //Functions for Ethernet or WiFi connections
 void NetworkInit();
@@ -77,14 +78,13 @@ Adafruit_MCP23X17 mcp[2];
 int MCPState[2] = {0, 0}; //0 = not connected, 1 = connected, 2 = error
 //Output configuration
 digital_Output Outputs[8];  //Variable array for save Output Information.
-uint16 Outputstates = 0xFFFF;
-
-
+uint16 Outputstates = 0xFFFF; //Variable for the states of the Output MCP[0]
+uint8 InputStatesHW = 0;  //Variable for the current states of the Inputs MCP[1] Port A
+unsigned long InputTimeStartpoints[8][2] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  //Starttime High and StartTime Low for calculate the percentage On-Time (Port A)
+uint8 InputOnTimePercent[8] = {0, 0, 0, 0, 0, 0, 0, 0};   //Percentage Value of On-Time (max 10 s time slot otherwise 100% or 0%)
+uint8 InputReadStep[8] = {0, 0, 0, 0, 0, 0, 0, 0}; //Value for save the step of Input reading 0= Reading not started, 1= On-time Start point fixed, 2 = Off-time Start point fixed, 3= Value safed 
 
 void setup(void) {
-  pinMode(D3, INPUT); //Interrupt PIN for INTA MCP 1
-  pinMode(D4, INPUT); //Interrupt PIN for INTB MCP 1
-
   wifiClient = new WiFiClient;
   Serial.begin(9600);
   uint8_t ResetCount = 0;
@@ -130,8 +130,10 @@ void setup(void) {
   server.on("/Output", HTTP_GET, WebserverOutput);
   server.on("/POST", HTTP_POST, WebserverPOST);
   
+  //Output config
   //Port Extension
-  MCPinit(mcp, MCPState);
+  InputStatesHW = MCPinit(mcp, MCPState);
+  Outputstates = InitOutputStates(mcp, Outputs, MCPState); 
 }
 void loop(void) {
   //OTA
@@ -159,8 +161,6 @@ void loop(void) {
     Break_10s = millis() + 10000;
     SensorPort1.StartConversion();
     SensorPort2.StartConversion();
-    Serial.println(mcp[0].readGPIOA()); //Only for MCP-Interrupt-Test
-    Serial.println(mcp[0].readGPIOB()); //Only for MCP-Interrupt-Test
 #ifdef BGTDEBUG
     Serial.print(timeClient->getFormattedTime());
     Serial.print(" ");
@@ -206,6 +206,28 @@ void loop(void) {
         Serial.print(": ");
         Serial.print(SensorPort2.GetSensorIndex(i)->getTempC());
         Serial.println(" °C"); 
+      }
+    }
+  }
+  if(digitalRead(INTPortA)) //In Work!!
+  {
+    InputStatesHW = mcp[MCPInput].readGPIOA();
+    for (int i = 0; i < 8; i++)
+    {
+      switch(InputReadStep[i])
+      {
+        case 0: //Meassurement not started
+          if(!(InputStatesHW & (1<<i)))
+            InputTimeStartpoints[i][1] = millis();
+          break;
+        case 1:
+          break;
+        case 2:
+          break;
+        case 3:
+          break;
+
+
       }
     }
   }
@@ -544,7 +566,7 @@ void WebserverOutput(AsyncWebServerRequest *request)
   sprintf(HTMLString2, "%s%s", HTMLString, html_OPconfig1);
   for(int i = 0; i < 8; i++)
   {
-    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, Outputs[i].Name, "Akt Status", i, Outputs[i].StartValue, i, Un_Checked[Outputs[i].MQTTState%2].c_str());
+    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, Outputs[i].Name, "Akt Status", "HZG ist", i, Outputs[i].StartValue, i, Un_Checked[Outputs[i].MQTTState%2].c_str());
     strcpy(HTMLString2, HTMLString);
   }
   sprintf(HTMLString2, html_OPSEfooter, HTMLString);
@@ -580,12 +602,17 @@ void WebserverPOST(AsyncWebServerRequest *request)
         }
         else if (request->getParam(i)->name() == "wlPassword")
         {
-          if (request->getParam(i)->value().length() <= 60)
-            strcpy(varConfig.WLAN_Password, request->getParam(i)->value().c_str());
-          else
+          if(request->getParam(i)->value()!="xxxxxx")
           {
-            request->send_P(200, "text/html", "Passwort zu lang<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
-            return;
+            if ((request->getParam(i)->value().length() <= 60)&&(request->getParam(i)->value().length() >= 8))
+            { 
+              strcpy(varConfig.WLAN_Password, request->getParam(i)->value().c_str());
+            }
+            else
+            {
+              request->send_P(200, "text/html", "Passwortlaenge muss zwischen 8 und 60 Zeichen liegen<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              return;
+            }
           }
         }
         else
@@ -765,7 +792,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
         }
       }
       EinstSpeichern();
-      request->send_P(200, "text/html", "Sensordaten wurden uebernommen!<br><meta http-equiv=\"refresh\" content=\"5; URL=/Sensors/\">"); //<a href=\>Startseite</a>
+      request->send_P(200, "text/html", "Sensordaten wurden uebernommen!<br><meta http-equiv=\"refresh\" content=\"2; URL=/Sensors/\">"); //<a href=\>Startseite</a>
       break;
     }
     case subSD:
@@ -781,7 +808,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
       if(Temp)
       DelTSensor(Temp);
       EinstSpeichern();
-      request->send_P(200, "text/html", "Sensor wurde geloescht!<br><meta http-equiv=\"refresh\" content=\"5; URL=/Sensors/\">"); //<a href=\>Startseite</a>
+      request->send_P(200, "text/html", "Sensor wurde geloescht!<br><meta http-equiv=\"refresh\" content=\"2; URL=/Sensors/\">"); //<a href=\>Startseite</a>
       //ESP_Restart = true;
       break;
     }   
@@ -791,7 +818,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
       SensorPort2.SensorSearch();
       TakeoverTSConfig(&SensorPort1, TempSensors, MaxSensors);
       TakeoverTSConfig(&SensorPort2, TempSensors, MaxSensors);
-      request->send_P(200, "text/html", "Sensoren wurden neu eingelesen!<br><meta http-equiv=\"refresh\" content=\"5; URL=/Sensors/\">"); //<a href=\>Startseite</a>
+      request->send_P(200, "text/html", "Sensoren wurden neu eingelesen!<br><meta http-equiv=\"refresh\" content=\"2; URL=/Sensors/\">"); //<a href=\>Startseite</a>
       break;
     }            
     case subOS:
@@ -805,13 +832,13 @@ void WebserverPOST(AsyncWebServerRequest *request)
           request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 808<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
           return;
         }
-        Outputs[i].MQTTState = 0;
+        Outputs[Port].MQTTState = 0;
         switch(Value)
         {
           case 1:
             if(request->getParam(i)->value().length()>15)
             {
-              request->send_P(200, "text/html", "Name zu lang Index 817<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              request->send_P(200, "text/html", "Name zu lang Index 814<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
               return;
             }
             strcpy(Outputs[Port].Name, request->getParam(i)->value().c_str());
@@ -819,26 +846,26 @@ void WebserverPOST(AsyncWebServerRequest *request)
           case 2:
             if((request->getParam(i)->value().toInt() > 2) || (request->getParam(i)->value().toInt() < 0))
             {
-              request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 824<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 822<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
               return;
             }
-            Outputs[i].StartValue = request->getParam(i)->value().toInt();
+            Outputs[Port].StartValue = request->getParam(i)->value().toInt();
             break;
           case 3:
             if(request->getParam(i)->value()!="on")
             {
-              request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 753<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 830<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
               return;
             }
-            Outputs->MQTTState = 1;
+            Outputs[Port].MQTTState = 1;
             break;
           default:
-            request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 763<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+            request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 836<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
             return;
         }
       }
       EinstSpeichern();
-      request->send_P(200, "text/html", "Relaiseinstellungen wurden uebernommen!<br><meta http-equiv=\"refresh\" content=\"5; URL=/Sensors/\">"); //<a href=\>Startseite</a>
+      request->send_P(200, "text/html", "Relaiseinstellungen wurden uebernommen!<br><meta http-equiv=\"refresh\" content=\"2; URL=/Output/\">"); //<a href=\>Startseite</a>
       break;
    }            
     default:

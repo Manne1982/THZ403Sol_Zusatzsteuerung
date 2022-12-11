@@ -95,17 +95,55 @@ int MCPSetup(Adafruit_MCP23X17 * MCP, int MCPAddress)
   }
   return 0;
 }
-void MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates)
+uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates)
 {
-  MCPStates[0] = MCPSetup(&MCP[0], MCPPort0);
-  MCPStates[1] = MCPSetup(&MCP[1], MCPPort1);
+  MCPStates[MCPOutput] = MCPSetup(&MCP[MCPOutput], MCPPort0);
+  MCPStates[MCPInput] = MCPSetup(&MCP[MCPInput], MCPPort1);
+  MCP[MCPOutput].writeGPIOAB(0xFFFF); //Set all outputs on High to put off the relaises
   for(int i =0; i <16; i++)
   {
-    MCP[0].pinMode(i, OUTPUT);
-    MCP[1].pinMode(i, INPUT_PULLUP);
-    MCP[1].setupInterruptPin(i, CHANGE);
+    MCP[MCPOutput].pinMode(i, OUTPUT);
+    MCP[MCPInput].pinMode(i, INPUT_PULLUP);
+    MCP[MCPInput].setupInterruptPin(i, CHANGE);
   }
-  MCP[0].writeGPIOAB(0xFFFF); //Set all outputs on High to put off the relaises
+  pinMode(INTPortA, INPUT); //Interrupt PIN for INTA MCP 1
+  pinMode(INTPortB, INPUT); //Interrupt PIN for INTB MCP 1
+  if(MCPStates[MCPInput]==1)
+    return MCP[MCPInput].readGPIOA();
+  else
+    return 0;
+}
+uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates)
+{
+  uint8 Manu_Auto = 0xFF; //all outputs Auto = 0xFF; all outputs Manu = 0x00
+  uint8 Manu_ONOFF = 0xFF;  //all outputs Off (Manu) = 0xFF; all outputs On (Manu) = 0x00
+  uint16 OutputConfig = 0;
+  if(MCPStates[MCPOutput] == 1)
+  {
+    for(int i = 0; i < 8; i++)
+    {
+      switch(Config[i].StartValue)
+      {
+        case 1:
+          Manu_ONOFF &= ~(1<<i); //No break to switch into Manu Mode
+        case 0:
+          Manu_Auto &= ~(1<<i);
+          break;
+        case 2:
+          break;
+        default:
+          #ifdef BGTDEBUG
+            Serial.println("Wrong StartValue for Output Config");
+          #endif
+          break;
+      }
+    }
+    OutputConfig = Manu_ONOFF << 8;
+    OutputConfig |= Manu_Auto;
+    MCP[MCPOutput].writeGPIOAB(OutputConfig);
+    return OutputConfig;
+  }
+  return 0xFFFF; //Return all ports Auto
 }
 
 //---------------------------------------------------------------------
