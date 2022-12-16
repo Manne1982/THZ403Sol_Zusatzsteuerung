@@ -145,7 +145,85 @@ uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * 
   }
   return 0xFFFF; //Return all ports Auto
 }
+void readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 * MCP)
+{
+  if(!Interrupt)
+  {
+    unsigned long currentTime = millis();
+    Inputs->StatesHW = MCP->readGPIOA();
+    for (int i = 0; i < 8; i++)
+    {
+      switch(Inputs->ReadStep[i])
+      {
+        case 4: //Input was off for more than 10 s
+        case 0: //Meassurement not started and start with hight edge
+          if(!(Inputs->StatesHW & (1<<i)))
+          {
+            Inputs->TimeStartpoints[i][0] = currentTime;
+            Inputs->ReadStep[i] = 1;
+          }
+          break;
+        case 1: //Meassurement started low time and start with falling edge
+          if(Inputs->StatesHW & (1<<i))
+          {
+            Inputs->TimeStartpoints[i][1] = currentTime;
+            Inputs->ReadStep[i]++;
+          }
+          break;
+        case 2: //cycle finished and write the Ratio value
+          if(!(Inputs->StatesHW & (1<<i)))
+          {
+                                     //  255 * on time / cycle time
+            Inputs->OnTimeRatio[i] = 255 * (Inputs->TimeStartpoints[i][1] - Inputs->TimeStartpoints[i][0]) / (currentTime - Inputs->TimeStartpoints[i][0]);
+            Inputs->TimeStartpoints[i][0] = currentTime;
+            Inputs->TimeStartpoints[i][1] = 0;
+            Inputs->ReadStep[i] = 1;
+          }
+          break;
+        case 3: //Input was on for more than 10 s
+          if(Inputs->StatesHW & (1<<i))
+          {
+            Inputs->OnTimeRatio[i] = 0;
+            Inputs->ReadStep[i]= 0;
+          }
+          break;
+        default:
+          break;
 
+      }
+      Serial.print("Port ");
+      Serial.print(i);
+      Serial.print(" = ");
+      Serial.print(Inputs->OnTimeRatio[i]);
+      Serial.print("; ");
+    }
+    Serial.println("");
+  }
+  else
+  {
+    unsigned long currentTime = millis();
+    for (int i = 0; i < 8; i++)
+    {
+      if((Inputs->ReadStep[i] == 3) || (Inputs->ReadStep[i] == 4))
+        continue;
+      if(((currentTime - Inputs->TimeStartpoints[i][0])>10000) && !(Inputs->StatesHW & (1<<i)))
+      {
+        Inputs->OnTimeRatio[i] = 255;
+        Inputs->ReadStep[i] = 3;
+        Inputs->TimeStartpoints[i][0] = 0;
+        Inputs->TimeStartpoints[i][1] = 0;
+      }
+      if(((currentTime - Inputs->TimeStartpoints[i][1])>10000) && (Inputs->StatesHW & (1<<i)))
+      {
+        Inputs->OnTimeRatio[i] = 0;
+        Inputs->ReadStep[i] = 4;
+        Inputs->TimeStartpoints[i][0] = 0;
+        Inputs->TimeStartpoints[i][1] = 0;
+      }
+    }
+  }
+
+}
 //---------------------------------------------------------------------
 uint64 StrToLongInt(String Input)
 {

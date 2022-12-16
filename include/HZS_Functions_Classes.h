@@ -47,6 +47,12 @@ struct TempSensor{
   float Offset = 0;
 };
 
+struct digital_Input{
+  uint8 StatesHW = 0;  //Variable for the current states of the Inputs MCP[1] Port A
+  unsigned long TimeStartpoints[8][2] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  //Starttime High and StartTime Low for calculate the percentage On-Time (Port A)
+  uint8 OnTimeRatio[8] = {0, 0, 0, 0, 0, 0, 0, 0};   //Ratio Value of On-Time (max 10 s time slot otherwise 255 or 0)
+  uint8 ReadStep[8] = {0, 0, 0, 0, 0, 0, 0, 0}; //Value for save the step of Input reading 0= Reading not started, 1= On-time Start point fixed, 2 = Off-time Start point fixed, 3= Value safed 
+};
 
 //Input Output functions
 TempSensor * FindTempSensor(TempSensor * TSArray, uint8 ArrayLen, uint64 Address); //Get pointer of varibale with the same address, if nothing found return value 0
@@ -58,6 +64,7 @@ uint8 FindMissingSensors(TSensorArray * TSensArray1, TSensorArray * TSensArray2,
 int MCPSetup(Adafruit_MCP23X17 * MCP, int MCPAddress);
 uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates);
 uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates); //MCPStates: 0= Not initiated, 1= connected, 2 = error
+void readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 * MCP);
 
 //General functions
 uint64 StrToLongInt(String Input);

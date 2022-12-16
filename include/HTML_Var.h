@@ -166,7 +166,7 @@ const char html_OPconfig2[] PROGMEM = R"rawliteral(
     <TD VALIGN="TOP">
 	  %s</TD>
     <TD VALIGN="TOP">
-	  %s</TD>
+	  %hhu</TD>
     <TD VALIGN="TOP">
 	  <input name="OS_%d_2" type="number" min="0" max="2" step="1" size="5" value="%d" list="OutputStates" required="1"><br /><br /></TD>
     <TD VALIGN="TOP">

@@ -79,11 +79,7 @@ int MCPState[2] = {0, 0}; //0 = not connected, 1 = connected, 2 = error
 //Output configuration
 digital_Output Outputs[8];  //Variable array for save Output Information.
 uint16 Outputstates = 0xFFFF; //Variable for the states of the Output MCP[0]
-uint8 InputStatesHW = 0;  //Variable for the current states of the Inputs MCP[1] Port A
-unsigned long InputTimeStartpoints[8][2] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  //Starttime High and StartTime Low for calculate the percentage On-Time (Port A)
-uint8 InputOnTimePercent[8] = {0, 0, 0, 0, 0, 0, 0, 0};   //Percentage Value of On-Time (max 10 s time slot otherwise 100% or 0%)
-uint8 InputReadStep[8] = {0, 0, 0, 0, 0, 0, 0, 0}; //Value for save the step of Input reading 0= Reading not started, 1= On-time Start point fixed, 2 = Off-time Start point fixed, 3= Value safed 
-
+digital_Input Inputs;
 void setup(void) {
   wifiClient = new WiFiClient;
   Serial.begin(9600);
@@ -132,7 +128,7 @@ void setup(void) {
   
   //Output config
   //Port Extension
-  InputStatesHW = MCPinit(mcp, MCPState);
+  Inputs.StatesHW = MCPinit(mcp, MCPState);
   Outputstates = InitOutputStates(mcp, Outputs, MCPState); 
 }
 void loop(void) {
@@ -209,28 +205,7 @@ void loop(void) {
       }
     }
   }
-  if(digitalRead(INTPortA)) //In Work!!
-  {
-    InputStatesHW = mcp[MCPInput].readGPIOA();
-    for (int i = 0; i < 8; i++)
-    {
-      switch(InputReadStep[i])
-      {
-        case 0: //Meassurement not started
-          if(!(InputStatesHW & (1<<i)))
-            InputTimeStartpoints[i][1] = millis();
-          break;
-        case 1:
-          break;
-        case 2:
-          break;
-        case 3:
-          break;
-
-
-      }
-    }
-  }
+  readDigitalInputs(digitalRead(INTPortA), &Inputs, &mcp[MCPInput]);
   //Restart for WWW-Requests
   if(ESP_Restart)
   {
@@ -566,7 +541,7 @@ void WebserverOutput(AsyncWebServerRequest *request)
   sprintf(HTMLString2, "%s%s", HTMLString, html_OPconfig1);
   for(int i = 0; i < 8; i++)
   {
-    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, Outputs[i].Name, "Akt Status", "HZG ist", i, Outputs[i].StartValue, i, Un_Checked[Outputs[i].MQTTState%2].c_str());
+    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, Outputs[i].Name, "Akt Status", Inputs.OnTimeRatio[i], i, Outputs[i].StartValue, i, Un_Checked[Outputs[i].MQTTState%2].c_str());
     strcpy(HTMLString2, HTMLString);
   }
   sprintf(HTMLString2, html_OPSEfooter, HTMLString);
