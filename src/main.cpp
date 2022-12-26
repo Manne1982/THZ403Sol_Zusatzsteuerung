@@ -49,12 +49,18 @@ void ResetVarSpeichern(char Count);
 //MQTT functions
 bool MQTTinit();  //Wenn verbunden Rückgabewert true
 void MQTT_callback(char* topic, byte* payload, unsigned int length);
-
+void MQTT_SendInputStates();
+int FindOutputName(const char* Topic);
+bool MQTT_sendMessage(const char * ValueName, const uint8* MSG, uint8 len);
+bool MQTT_sendMessage(const char * ValueName, int MSG);
+bool MQTT_sendMessage(const char * ValueName, uint8 MSG);
+bool MQTT_sendMessage(const char * ValueName, uint32 MSG);
+bool MQTT_sendMessage(const char * ValueName, float MSG);
 
 //Projektvariablen
 NWConfig varConfig;
 char const EthernetMAC[] = "A0:A1:A2:A3:A4:A5";         //For Ethernet connection (MQTT)
-uint8_t const mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5}; //For Ethernet connection
+uint8 const mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5}; //For Ethernet connection
 bool ESP_Restart = false;                         //Variable for a restart with delay in WWW Request
 unsigned long Break_h = 0;
 unsigned long Break_10s = 0;
@@ -80,10 +86,12 @@ int MCPState[2] = {0, 0}; //0 = not connected, 1 = connected, 2 = error
 digital_Output Outputs[8];  //Variable array for save Output Information.
 uint16 Outputstates = 0xFFFF; //Variable for the states of the Output MCP[0]
 digital_Input Inputs;
+
+
 void setup(void) {
   wifiClient = new WiFiClient;
   Serial.begin(9600);
-  uint8_t ResetCount = 0;
+  uint8 ResetCount = 0;
   ResetCount = ResetVarLesen();
   if(ResetCount > 5)  //plausibility check, otherwise reset of count variable
     ResetCount = 0;
@@ -129,6 +137,7 @@ void setup(void) {
   //Output config
   //Port Extension
   Inputs.StatesHW = MCPinit(mcp, MCPState);
+  MQTT_SendInputStates();
   Outputstates = InitOutputStates(mcp, Outputs, MCPState); 
 }
 void loop(void) {
@@ -179,33 +188,33 @@ void loop(void) {
   //Temperature sensor  
   if(SensorPort1.Loop())
   {
+    String SensorPathName = "";
     for(int i = 0; i < SensorPort1.GetSensorCount(); i++)
     {
       if(SensorPort1.GetSensorIndex(i)->NewValueAvailable())
       {
-        Serial.print("New Value for Sensor ");
-        Serial.print(SensorPort1.GetSensorIndex(i)->getAddressHEX());
-        Serial.print(": ");
-        Serial.print(SensorPort1.GetSensorIndex(i)->getTempC());
-        Serial.println(" °C"); 
+        SensorPathName = "TempSensors/" + SensorPort1.GetSensorIndex(i)->getName();
+        MQTT_sendMessage(SensorPathName.c_str(), SensorPort1.GetSensorIndex(i)->getTempC());
+//        MQTT_sendMessage(SensorPort1.GetSensorIndex(i)->getName().c_str(), SensorPort1.GetSensorIndex(i)->getTempC());
       }
     }
   }
   if(SensorPort2.Loop())
   {
+    String SensorPathName = "";
     for(int i = 0; i < SensorPort2.GetSensorCount(); i++)
     {
       if(SensorPort2.GetSensorIndex(i)->NewValueAvailable())
       {
-        Serial.print("New Value for Sensor ");
-        Serial.print(SensorPort2.GetSensorIndex(i)->getAddressHEX());
-        Serial.print(": ");
-        Serial.print(SensorPort2.GetSensorIndex(i)->getTempC());
-        Serial.println(" °C"); 
+        SensorPathName = "TempSensors/" + SensorPort2.GetSensorIndex(i)->getName();
+        MQTT_sendMessage(SensorPathName.c_str(), SensorPort2.GetSensorIndex(i)->getTempC());
       }
     }
   }
-  readDigitalInputs(digitalRead(INTPortA), &Inputs, &mcp[MCPInput]);
+  if(readDigitalInputs(digitalRead(INTPortA), &Inputs, &mcp[MCPInput]))
+  {
+    MQTT_SendInputStates();
+  }
   //Restart for WWW-Requests
   if(ESP_Restart)
   {
@@ -231,8 +240,17 @@ bool MQTTinit()
     delay(200);
   }
   if(MQTTclient->connected()){
-    Serial.println("MQTTclient connected");
-    MQTTclient->subscribe("/Test");
+    #ifdef BGTDEBUG
+      Serial.println("MQTTclient connected");
+    #endif
+    String SubscribeRoot = varConfig.MQTT_rootpath;
+    SubscribeRoot += "/setOutput/";
+    String SubscribeTemp = "";
+    for(int i = 0; i < 8; i++)
+    {
+      SubscribeTemp = SubscribeRoot + Outputs[i].Name;
+      MQTTclient->subscribe(SubscribeTemp.c_str());
+    }
     return true;
   }
   else
@@ -254,12 +272,67 @@ bool MQTTinit()
 }
 void MQTT_callback(char* topic, byte* payload, unsigned int length)
 {
-  char payloadTemp[length + 2];
-  for (unsigned int i = 0; i < length; i++){
-    payloadTemp[i] = (char) payload[i];
+  int OutputIndex = FindOutputName(topic), ValueTemp = 0;
+  String Value = (char*) payload;
+  if(OutputIndex < 0)
+  { 
+    String TempText = topic, TempPath = "/Fehler";
+    TempText += " -> ";
+    TempText += (char*) payload;
+    MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
+    return;
   }
-  payloadTemp[length] = 0;
-  Serial.println(payloadTemp);
+  Value = Value.substring(0, length);
+  ValueTemp = Value.toInt();
+  SetOutput(OutputIndex, ValueTemp, &Outputstates, &mcp[MCPOutput]);
+
+}
+int FindOutputName(const char* Topic)
+{
+  for(int i = 0; i < 8; i++)
+  {
+    if(!strcmp(Topic, Outputs[i].Name))
+      return i;
+  }
+  return -1;
+}
+void MQTT_SendInputStates()
+{
+  String Temp = "ratio_";
+  MQTT_sendMessage("hwInput/InputPort", (uint8) ~Inputs.StatesHW);
+  for(int i = 0; i<8; i++)
+  {
+    Temp = "ratio/";
+    Temp += Outputs[i].Name;
+    MQTT_sendMessage(Temp.c_str(), Inputs.OnTimeRatio[i]);
+    Temp.replace("ratio", "hwInput");
+    MQTT_sendMessage(Temp.c_str(), Inputs.StatesHW&1<<i?0:1);
+  }
+}
+bool MQTT_sendMessage(const char * ValueName, const uint8* MSG, uint8 len)
+{
+  int lenPath = strlen(varConfig.MQTT_rootpath);
+  char strPathVar[lenPath+20];
+
+  sprintf(strPathVar, "%s/%s", varConfig.MQTT_rootpath, ValueName);
+  return MQTTclient->publish(strPathVar, MSG, len, true);
+  
+}
+bool MQTT_sendMessage(const char * ValueName, int MSG)
+{
+  return MQTT_sendMessage(ValueName, (const uint8*) IntToStr(MSG).c_str(), IntToStr(MSG).length());
+}
+bool MQTT_sendMessage(const char * ValueName, uint8 MSG)
+{
+  return MQTT_sendMessage(ValueName, (const uint8*) IntToStr(MSG).c_str(), IntToStr(MSG).length());
+}
+bool MQTT_sendMessage(const char * ValueName, uint32 MSG)
+{
+  return MQTT_sendMessage(ValueName, (const uint8*) IntToStr(MSG).c_str(), IntToStr(MSG).length());
+}
+bool MQTT_sendMessage(const char * ValueName, float MSG)
+{
+  return MQTT_sendMessage(ValueName, (const uint8*) IntToStr(MSG).c_str(), IntToStr(MSG).length());
 }
 //---------------------------------------------------------------------
 //Einstellungen laden und Speichern im EEPROM bzw. Flash

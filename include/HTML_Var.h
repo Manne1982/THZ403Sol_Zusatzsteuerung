@@ -31,7 +31,6 @@ Uhrzeit: %s | Datum: %s, %02d.%02d.%d | Status:
 <a href=\>Startseite</a> | 
 <a href=\Sensors\>Sensor-Einstellungen</a> | 
 <a href=\Output\>Relais-Einstellungen</a> | 
-<a href=\Settings\>Einstellungen</a> | 
 
 </h3><hr>
 )rawliteral";

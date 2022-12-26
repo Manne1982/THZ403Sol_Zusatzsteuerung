@@ -145,8 +145,39 @@ uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * 
   }
   return 0xFFFF; //Return all ports Auto
 }
-void readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 * MCP)
+void SetOutput(int OutputIndex, int Value, uint16 * _OutputStates, Adafruit_MCP23X17 * MCP)
 {
+  if((Value < 0) || (Value > 2))
+    return;
+  switch(Value)
+  {
+    case 1:
+      MCP->digitalWrite(OutputIndex, 0);  //Switch to Manu mode
+      MCP->digitalWrite(OutputIndex + 8, 0); //Switch on the SSR (Solid State Relais) for Manu On
+      *_OutputStates &= (uint16) ~(((uint16) 1<<OutputIndex)+((uint16) 1<<(OutputIndex+8)));
+      break;
+    case 0:
+      MCP->digitalWrite(OutputIndex, 0); //Switch to Manu mode
+      MCP->digitalWrite(OutputIndex + 8, 1); //Switch off the SSR for Manu Off
+      *_OutputStates &= (uint16) ~(((uint16) 1<<OutputIndex));
+      *_OutputStates |= (uint16)((uint16)1<<(OutputIndex+8));
+      break;
+    case 2:
+      MCP->digitalWrite(OutputIndex, 1); //Switch to Auto mode
+      MCP->digitalWrite(OutputIndex + 8, 1); //Switch off the SSR for Manu Off
+      *_OutputStates |= (uint16)(((uint16)1<<OutputIndex)+((uint16)1<<(OutputIndex+8)));
+      break;
+    default:
+      #ifdef BGTDEBUG
+        Serial.println("Wrong StartValue for Output Config");
+      #endif
+      break;
+  }
+
+}
+bool readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 * MCP)
+{
+  bool anyChange = false;
   if(!Interrupt)
   {
     unsigned long currentTime = millis();
@@ -156,16 +187,19 @@ void readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 
       switch(Inputs->ReadStep[i])
       {
         case 4: //Input was off for more than 10 s
-        case 0: //Meassurement not started and start with hight edge
+        case 0: //Meassurement not started and start with hight edge (Input inverted)
           if(!(Inputs->StatesHW & (1<<i)))
           {
             Inputs->TimeStartpoints[i][0] = currentTime;
             Inputs->ReadStep[i] = 1;
+            Inputs->OnTimeRatio[i] = 255;
           }
           break;
         case 1: //Meassurement started low time and start with falling edge
           if(Inputs->StatesHW & (1<<i))
           {
+            if(Inputs->OnTimeRatio[i] == 255)
+              Inputs->OnTimeRatio[i] = 0;
             Inputs->TimeStartpoints[i][1] = currentTime;
             Inputs->ReadStep[i]++;
           }
@@ -191,13 +225,8 @@ void readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 
           break;
 
       }
-      Serial.print("Port ");
-      Serial.print(i);
-      Serial.print(" = ");
-      Serial.print(Inputs->OnTimeRatio[i]);
-      Serial.print("; ");
     }
-    Serial.println("");
+    anyChange = true;
   }
   else
   {
@@ -212,6 +241,7 @@ void readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 
         Inputs->ReadStep[i] = 3;
         Inputs->TimeStartpoints[i][0] = 0;
         Inputs->TimeStartpoints[i][1] = 0;
+        anyChange = true;
       }
       if(((currentTime - Inputs->TimeStartpoints[i][1])>10000) && (Inputs->StatesHW & (1<<i)))
       {
@@ -219,10 +249,11 @@ void readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 
         Inputs->ReadStep[i] = 4;
         Inputs->TimeStartpoints[i][0] = 0;
         Inputs->TimeStartpoints[i][1] = 0;
+        anyChange = true;
       }
     }
   }
-
+  return anyChange;
 }
 //---------------------------------------------------------------------
 uint64 StrToLongInt(String Input)
@@ -273,10 +304,16 @@ String IntToStr(long int _var)
     sprintf(Temp,"%ld",_var);
     return Temp;
 }
-String IntToStr(uint32_t _var)
+String IntToStr(uint32 _var)
 {
     char Temp[20];
     sprintf(Temp,"%u",_var);
+    return Temp;
+}
+String IntToStr(uint8 _var)
+{
+    char Temp[20];
+    sprintf(Temp,"%hhu",_var);
     return Temp;
 }
 String IntToStr(float _var)

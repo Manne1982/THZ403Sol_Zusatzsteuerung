@@ -36,7 +36,7 @@ struct NWConfig {
 
 struct digital_Output{
   char Name[15]="unnamed";
-  byte StartValue = 2; //0 = off; 1 = on; 2 = Auto
+  byte StartValue = 2; //0 = off; 1 = on; 2 = Auto; --> ToDo 3 = Auto but Output over Solid State Relais 
   byte MQTTState = 0; //0 = MQTT control off; 1 = MQTT control on
 };
 
@@ -64,14 +64,17 @@ uint8 FindMissingSensors(TSensorArray * TSensArray1, TSensorArray * TSensArray2,
 int MCPSetup(Adafruit_MCP23X17 * MCP, int MCPAddress);
 uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates);
 uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates); //MCPStates: 0= Not initiated, 1= connected, 2 = error
-void readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 * MCP);
+void SetOutput(int OutputIndex, int Value, uint16 * OutputConfig, Adafruit_MCP23X17 * MCP);
+bool readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 * MCP);
 
 //General functions
 uint64 StrToLongInt(String Input);
 String IntToStr(int _var);
 String IntToStr(float _var);
 String IntToStrHex(int _var);
-String IntToStr(uint32_t _var);
+String IntToStr(uint32 _var);
+String IntToStr(uint8 _var);
+
 
 
 #include "HZS_Functions_Classes.cpp"
