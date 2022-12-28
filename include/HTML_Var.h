@@ -136,6 +136,7 @@ const char html_OPconfig1[] PROGMEM = R"rawliteral(
   <option value="0">Aus</option>
   <option value="1">An</option>
   <option value="2">Automatik</option>
+  <option value="3">Automatik over SSR</option>
 </datalist>
 <TABLE> <!-- 'border="1"-->
   <TR>
@@ -163,11 +164,11 @@ const char html_OPconfig2[] PROGMEM = R"rawliteral(
     <TD VALIGN="TOP">
 	  <input name="OS_%d_1" type="text" maxlength="14" size="15" value="%s" required="1"><br /><br /></TD>
     <TD VALIGN="TOP">
-	  %s</TD>
+	  %d</TD>
     <TD VALIGN="TOP">
 	  %hhu</TD>
     <TD VALIGN="TOP">
-	  <input name="OS_%d_2" type="number" min="0" max="2" step="1" size="5" value="%d" list="OutputStates" required="1"><br /><br /></TD>
+	  <input name="OS_%d_2" type="number" min="0" max="3" step="1" size="5" value="%d" list="OutputStates" required="1"><br /><br /></TD>
     <TD VALIGN="TOP">
 	  <input name="OS_%d_3" %s type="checkbox"><br /><br /></TD>
     <TD VALIGN="TOP">

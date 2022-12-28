@@ -25,7 +25,7 @@
 #include <Adafruit_MCP23X17.h>
 
 
-#define BGTDEBUG 1
+#define BGTDEBUG 0
 
 
 //Funktionsdefinitionen
@@ -74,6 +74,7 @@ NTPClient * timeClient = 0;
 EthernetClient * e_client = 0;
 WiFiClient * wifiClient;
 PubSubClient * MQTTclient = 0;
+const char SubscribeRoot[] = "/setOutput/";
 //Temperature sensors
 const uint8 MaxSensors = 15; 
 TSensorArray SensorPort1(9);
@@ -84,13 +85,16 @@ Adafruit_MCP23X17 mcp[2];
 int MCPState[2] = {0, 0}; //0 = not connected, 1 = connected, 2 = error
 //Output configuration
 digital_Output Outputs[8];  //Variable array for save Output Information.
-uint16 Outputstates = 0xFFFF; //Variable for the states of the Output MCP[0]
 digital_Input Inputs;
+uint16 Outputstates = 0xFFFF; //Variable for the states of the Output MCP[0]
+uint16 OutputstatesAutoSSRelais = 0x0000;
 
 
 void setup(void) {
   wifiClient = new WiFiClient;
-  Serial.begin(9600);
+  #ifdef BGTDEBUG
+    Serial.begin(9600);
+  #endif
   uint8 ResetCount = 0;
   ResetCount = ResetVarLesen();
   if(ResetCount > 5)  //plausibility check, otherwise reset of count variable
@@ -138,7 +142,7 @@ void setup(void) {
   //Port Extension
   Inputs.StatesHW = MCPinit(mcp, MCPState);
   MQTT_SendInputStates();
-  Outputstates = InitOutputStates(mcp, Outputs, MCPState); 
+  Outputstates = InitOutputStates(mcp, Outputs, MCPState, &OutputstatesAutoSSRelais); 
 }
 void loop(void) {
   //OTA
@@ -166,6 +170,7 @@ void loop(void) {
     Break_10s = millis() + 10000;
     SensorPort1.StartConversion();
     SensorPort2.StartConversion();
+    MQTT_sendMessage("TestVar", TestVar);
 #ifdef BGTDEBUG
     Serial.print(timeClient->getFormattedTime());
     Serial.print(" ");
@@ -211,7 +216,7 @@ void loop(void) {
       }
     }
   }
-  if(readDigitalInputs(digitalRead(INTPortA), &Inputs, &mcp[MCPInput]))
+  if(readDigitalInputs_SetOutputIfAutoSSRMode(digitalRead(INTPortA), &Inputs, mcp, OutputstatesAutoSSRelais, &Outputstates))
   {
     MQTT_SendInputStates();
   }
@@ -243,29 +248,31 @@ bool MQTTinit()
     #ifdef BGTDEBUG
       Serial.println("MQTTclient connected");
     #endif
-    String SubscribeRoot = varConfig.MQTT_rootpath;
-    SubscribeRoot += "/setOutput/";
+    String SubscribeRootTemp = varConfig.MQTT_rootpath;
+    SubscribeRootTemp += SubscribeRoot;
     String SubscribeTemp = "";
     for(int i = 0; i < 8; i++)
     {
-      SubscribeTemp = SubscribeRoot + Outputs[i].Name;
+      SubscribeTemp = SubscribeRootTemp + Outputs[i].Name;
       MQTTclient->subscribe(SubscribeTemp.c_str());
     }
     return true;
   }
   else
   {
-    Serial.println("MQTTclient connection failure");
-    Serial.print("MAC-Adresse: ");
-    Serial.println((varConfig.NW_Flags & NW_EthernetActive)?EthernetMAC:WiFi.macAddress().c_str());
-    Serial.print("Benutzername: ");
-    Serial.println(varConfig.MQTT_Username);
-    Serial.print("Passwort: ");
-    Serial.println(varConfig.MQTT_Password);
-    Serial.print("Port: ");
-    Serial.println(varConfig.MQTT_Port);
-    Serial.print("Server: ");
-    Serial.println(varConfig.MQTT_Server);
+    #ifdef BGTDEBUG
+      Serial.println("MQTTclient connection failure");
+      Serial.print("MAC-Adresse: ");
+      Serial.println((varConfig.NW_Flags & NW_EthernetActive)?EthernetMAC:WiFi.macAddress().c_str());
+      Serial.print("Benutzername: ");
+      Serial.println(varConfig.MQTT_Username);
+      Serial.print("Passwort: ");
+      Serial.println(varConfig.MQTT_Password);
+      Serial.print("Port: ");
+      Serial.println(varConfig.MQTT_Port);
+      Serial.print("Server: ");
+      Serial.println(varConfig.MQTT_Server);
+    #endif
     
     return false;
   }
@@ -276,22 +283,26 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
   String Value = (char*) payload;
   if(OutputIndex < 0)
   { 
-    String TempText = topic, TempPath = "/Fehler";
+    String TempText = topic, TempPath = "Fehler";
     TempText += " -> ";
-    TempText += (char*) payload;
+    TempText += (char) payload[0];
     MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
     return;
   }
   Value = Value.substring(0, length);
   ValueTemp = Value.toInt();
   SetOutput(OutputIndex, ValueTemp, &Outputstates, &mcp[MCPOutput]);
-
+  if(ValueTemp!=3)
+    OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+  if(ValueTemp==3)
+    OutputstatesAutoSSRelais |= (1<<OutputIndex);
 }
 int FindOutputName(const char* Topic)
 {
+  int pos = strlen(varConfig.MQTT_rootpath) + strlen(SubscribeRoot);
   for(int i = 0; i < 8; i++)
   {
-    if(!strcmp(Topic, Outputs[i].Name))
+    if(!strcmp(&Topic[pos], Outputs[i].Name))
       return i;
   }
   return -1;
@@ -610,11 +621,15 @@ void WebserverOutput(AsyncWebServerRequest *request)
   int monthDay = ptm->tm_mday;
   int currentMonth = ptm->tm_mon + 1;
   int currentYear = ptm->tm_year + 1900;
+  int TempCurrentOutputState = 0;
   sprintf(HTMLString, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear);
   sprintf(HTMLString2, "%s%s", HTMLString, html_OPconfig1);
   for(int i = 0; i < 8; i++)
   {
-    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, Outputs[i].Name, "Akt Status", Inputs.OnTimeRatio[i], i, Outputs[i].StartValue, i, Un_Checked[Outputs[i].MQTTState%2].c_str());
+    TempCurrentOutputState = (~Outputstates &((uint16) 1<<(i+8)))/((uint16)1<<(i+8)); //Manuel On or Off
+    TempCurrentOutputState = (Outputstates &((uint16) 1<<i))?2:TempCurrentOutputState; //Auto or Manuell
+    TempCurrentOutputState = OutputstatesAutoSSRelais&((uint8) 1<<i)?3:TempCurrentOutputState; //Auto over Solid state relais
+    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, Outputs[i].Name, TempCurrentOutputState, Inputs.OnTimeRatio[i], i, Outputs[i].StartValue, i, Un_Checked[Outputs[i].MQTTState%2].c_str());
     strcpy(HTMLString2, HTMLString);
   }
   sprintf(HTMLString2, html_OPSEfooter, HTMLString);
@@ -892,12 +907,20 @@ void WebserverPOST(AsyncWebServerRequest *request)
             strcpy(Outputs[Port].Name, request->getParam(i)->value().c_str());
             break;
           case 2:
-            if((request->getParam(i)->value().toInt() > 2) || (request->getParam(i)->value().toInt() < 0))
+            if((request->getParam(i)->value().toInt() > 3) || (request->getParam(i)->value().toInt() < 0))
             {
               request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 822<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
               return;
             }
             Outputs[Port].StartValue = request->getParam(i)->value().toInt();
+            if(Outputs[Port].StartValue == 3)
+            {
+              OutputstatesAutoSSRelais |= (1<<Port);
+            }
+            else
+            {
+              OutputstatesAutoSSRelais &= ~(1<<Port);
+            }
             break;
           case 3:
             if(request->getParam(i)->value()!="on")
