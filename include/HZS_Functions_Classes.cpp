@@ -113,7 +113,7 @@ uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates)
   else
     return 0;
 }
-uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates)
+uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates, uint16 * AutoOverSSRelais)
 {
   uint8 Manu_Auto = 0xFF; //all outputs Auto = 0xFF; all outputs Manu = 0x00
   uint8 Manu_ONOFF = 0xFF;  //all outputs Off (Manu) = 0xFF; all outputs On (Manu) = 0x00
@@ -129,8 +129,10 @@ uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * 
         case 0:
           Manu_Auto &= ~(1<<i);
           break;
+        case 3: //Switch to Manu-Mode fist if any Input messured to save anergy
+          *AutoOverSSRelais |= (1<<i);
         case 2:
-          break;
+          break;        
         default:
           #ifdef BGTDEBUG
             Serial.println("Wrong StartValue for Output Config");
@@ -147,7 +149,7 @@ uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * 
 }
 void SetOutput(int OutputIndex, int Value, uint16 * _OutputStates, Adafruit_MCP23X17 * MCP)
 {
-  if((Value < 0) || (Value > 2))
+  if((Value < 0) || (Value > 3))
     return;
   switch(Value)
   {
@@ -163,6 +165,7 @@ void SetOutput(int OutputIndex, int Value, uint16 * _OutputStates, Adafruit_MCP2
       *_OutputStates |= (uint16)((uint16)1<<(OutputIndex+8));
       break;
     case 2:
+    case 3:
       MCP->digitalWrite(OutputIndex, 1); //Switch to Auto mode
       MCP->digitalWrite(OutputIndex + 8, 1); //Switch off the SSR for Manu Off
       *_OutputStates |= (uint16)(((uint16)1<<OutputIndex)+((uint16)1<<(OutputIndex+8)));
@@ -175,13 +178,14 @@ void SetOutput(int OutputIndex, int Value, uint16 * _OutputStates, Adafruit_MCP2
   }
 
 }
-bool readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 * MCP)
+bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 * MCP, uint8 AutoSSRMode, uint16 * _OutputStates)
 {
   bool anyChange = false;
+  uint8 InputOldValue = Inputs->StatesHW;
   if(!Interrupt)
   {
     unsigned long currentTime = millis();
-    Inputs->StatesHW = MCP->readGPIOA();
+    Inputs->StatesHW = MCP[MCPInput].readGPIOA();
     for (int i = 0; i < 8; i++)
     {
       switch(Inputs->ReadStep[i])
@@ -198,7 +202,7 @@ bool readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 
         case 1: //Meassurement started low time and start with falling edge
           if(Inputs->StatesHW & (1<<i))
           {
-            if(Inputs->OnTimeRatio[i] == 255)
+            if((Inputs->OnTimeRatio[i] == 255)&&(Inputs->TimeStartpoints[i][0]==0))
               Inputs->OnTimeRatio[i] = 0;
             Inputs->TimeStartpoints[i][1] = currentTime;
             Inputs->ReadStep[i]++;
@@ -223,7 +227,10 @@ bool readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 
           break;
         default:
           break;
-
+      }
+      if(Inputs->OnTimeRatio[i] && (AutoSSRMode & (1<<i))&&((InputOldValue&(1<<i))!=(Inputs->StatesHW&(1<<i))))
+      {
+        SetOutput(i, ((~Inputs->StatesHW & (1<<i))/(1<<i)), _OutputStates, &MCP[MCPOutput]);
       }
     }
     anyChange = true;
@@ -250,6 +257,11 @@ bool readDigitalInputs(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 
         Inputs->TimeStartpoints[i][0] = 0;
         Inputs->TimeStartpoints[i][1] = 0;
         anyChange = true;
+      }
+      if((Inputs->OnTimeRatio[i]==0)&&(AutoSSRMode & (1<<i))&&((~*_OutputStates) & (uint16)(1<<i))) //if Input ratio on 0 switch off the relais for Manu mode to save energy
+      {
+        TestVar++;
+        SetOutput(i, 3, _OutputStates, &MCP[MCPOutput]);
       }
     }
   }
