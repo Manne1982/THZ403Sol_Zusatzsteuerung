@@ -260,7 +260,6 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * Inp
       }
       if((Inputs->OnTimeRatio[i]==0)&&(AutoSSRMode & (1<<i))&&((~*_OutputStates) & (uint16)(1<<i))) //if Input ratio on 0 switch off the relais for Manu mode to save energy
       {
-        TestVar++;
         SetOutput(i, 3, _OutputStates, &MCP[MCPOutput]);
       }
     }

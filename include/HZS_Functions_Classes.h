@@ -10,8 +10,6 @@
 #define INTPortA D3
 #define INTPortB D4
 
-int TestVar = 0;
-
 struct NWConfig {
   //Einstellungen NW-Einstellungen WLAN
   uint16 NW_Flags = 1; //See Enum NW_...

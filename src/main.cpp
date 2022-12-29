@@ -74,7 +74,7 @@ NTPClient * timeClient = 0;
 EthernetClient * e_client = 0;
 WiFiClient * wifiClient;
 PubSubClient * MQTTclient = 0;
-const char SubscribeRoot[] = "/setOutput/";
+String SubscribeRoot[2] = {"/setOutput/", "/General/"};
 //Temperature sensors
 const uint8 MaxSensors = 15; 
 TSensorArray SensorPort1(9);
@@ -83,11 +83,11 @@ TempSensor TempSensors[MaxSensors]; //Variable array for save Information about 
 //Port extension
 Adafruit_MCP23X17 mcp[2];
 int MCPState[2] = {0, 0}; //0 = not connected, 1 = connected, 2 = error
-//Output configuration
-digital_Output Outputs[8];  //Variable array for save Output Information.
-digital_Input Inputs;
-uint16 Outputstates = 0xFFFF; //Variable for the states of the Output MCP[0]
-uint16 OutputstatesAutoSSRelais = 0x0000;
+//Output Input configuration
+digital_Output OutputsBasicSettings[8];  //Variable array for save Output Information.
+digital_Input Inputs;  //Variable to save current states and auxiliary variables of digital inputs
+uint16 Outputstates = 0xFFFF; //Variable for the current states of the Output MCP[0]
+uint16 OutputstatesAutoSSRelais = 0x0000;  //Variable for the Auto over SSR-Settings
 
 
 void setup(void) {
@@ -142,7 +142,7 @@ void setup(void) {
   //Port Extension
   Inputs.StatesHW = MCPinit(mcp, MCPState);
   MQTT_SendInputStates();
-  Outputstates = InitOutputStates(mcp, Outputs, MCPState, &OutputstatesAutoSSRelais); 
+  Outputstates = InitOutputStates(mcp, OutputsBasicSettings, MCPState, &OutputstatesAutoSSRelais); 
 }
 void loop(void) {
   //OTA
@@ -170,12 +170,11 @@ void loop(void) {
     Break_10s = millis() + 10000;
     SensorPort1.StartConversion();
     SensorPort2.StartConversion();
-    MQTT_sendMessage("TestVar", TestVar);
-#ifdef BGTDEBUG
-    Serial.print(timeClient->getFormattedTime());
-    Serial.print(" ");
-    Serial.println(Ethernet.localIP());
-#endif
+    #ifdef BGTDEBUG
+      Serial.print(timeClient->getFormattedTime());
+      Serial.print(" ");
+      Serial.println(Ethernet.localIP());
+    #endif
   }
   if(millis()>Break_s)
   {
@@ -249,13 +248,17 @@ bool MQTTinit()
       Serial.println("MQTTclient connected");
     #endif
     String SubscribeRootTemp = varConfig.MQTT_rootpath;
-    SubscribeRootTemp += SubscribeRoot;
     String SubscribeTemp = "";
+    SubscribeRootTemp += SubscribeRoot[0];
     for(int i = 0; i < 8; i++)
     {
-      SubscribeTemp = SubscribeRootTemp + Outputs[i].Name;
+      SubscribeTemp = SubscribeRootTemp + OutputsBasicSettings[i].Name;
       MQTTclient->subscribe(SubscribeTemp.c_str());
     }
+    SubscribeRootTemp = varConfig.MQTT_rootpath;
+    SubscribeRootTemp += SubscribeRoot[1];
+    SubscribeTemp = SubscribeRootTemp + "WLAN_active";
+    MQTTclient->subscribe(SubscribeTemp.c_str());
     return true;
   }
   else
@@ -279,30 +282,53 @@ bool MQTTinit()
 }
 void MQTT_callback(char* topic, byte* payload, unsigned int length)
 {
-  int OutputIndex = FindOutputName(topic), ValueTemp = 0;
+  String TempTopic = topic;
   String Value = (char*) payload;
-  if(OutputIndex < 0)
-  { 
-    String TempText = topic, TempPath = "Fehler";
-    TempText += " -> ";
-    TempText += (char) payload[0];
-    MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
-    return;
+  if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + SubscribeRoot[0].length()))==SubscribeRoot[0])
+  {
+    int OutputIndex = FindOutputName(topic), ValueTemp = 0;
+    if(OutputIndex < 0)
+    { 
+      String TempText = topic, TempPath = "Fehler";
+      TempText += " -> ";
+      TempText += (char) payload[0];
+      MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
+      return;
+    }
+    Value = Value.substring(0, length);
+    ValueTemp = Value.toInt();
+    SetOutput(OutputIndex, ValueTemp, &Outputstates, &mcp[MCPOutput]);
+    if(ValueTemp!=3)
+      OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+    if(ValueTemp==3)
+      OutputstatesAutoSSRelais |= (1<<OutputIndex);
   }
-  Value = Value.substring(0, length);
-  ValueTemp = Value.toInt();
-  SetOutput(OutputIndex, ValueTemp, &Outputstates, &mcp[MCPOutput]);
-  if(ValueTemp!=3)
-    OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
-  if(ValueTemp==3)
-    OutputstatesAutoSSRelais |= (1<<OutputIndex);
+  else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + SubscribeRoot[1].length()))==SubscribeRoot[1])
+  {
+    if(TempTopic.substring(strlen(varConfig.MQTT_rootpath) + SubscribeRoot[1].length())=="WLAN_active")
+    {
+      switch(Value.toInt())
+      {
+        case 0: 
+          if(((varConfig.NW_Flags & NW_EthernetActive) && Ethernet.linkStatus()== LinkON))
+            WiFi.disconnect();
+          break;
+        case 1:
+          if(!WiFi.isConnected())
+            NetworkInit();
+          break;
+        default:
+          break;
+      }
+    }
+  }
 }
 int FindOutputName(const char* Topic)
 {
-  int pos = strlen(varConfig.MQTT_rootpath) + strlen(SubscribeRoot);
+  int pos = strlen(varConfig.MQTT_rootpath) + SubscribeRoot[0].length();
   for(int i = 0; i < 8; i++)
   {
-    if(!strcmp(&Topic[pos], Outputs[i].Name))
+    if(!strcmp(&Topic[pos], OutputsBasicSettings[i].Name))
       return i;
   }
   return -1;
@@ -314,7 +340,7 @@ void MQTT_SendInputStates()
   for(int i = 0; i<8; i++)
   {
     Temp = "ratio/";
-    Temp += Outputs[i].Name;
+    Temp += OutputsBasicSettings[i].Name;
     MQTT_sendMessage(Temp.c_str(), Inputs.OnTimeRatio[i]);
     Temp.replace("ratio", "hwInput");
     MQTT_sendMessage(Temp.c_str(), Inputs.StatesHW&1<<i?0:1);
@@ -357,12 +383,12 @@ void EinstSpeichern()
     Checksumme += pointer[i];
 
   //EEPROM initialisieren
-  EEPROM.begin(sizeof(varConfig) + sizeof(Outputs) + sizeof(TempSensors) + 14);
+  EEPROM.begin(sizeof(varConfig) + sizeof(OutputsBasicSettings) + sizeof(TempSensors) + 14);
 
   EEPROM.put(0, varConfig);
   EEPROM.put(sizeof(varConfig) + 1, Checksumme);
-  EEPROM.put(sizeof(varConfig) + 3, Outputs);
-  EEPROM.put(sizeof(varConfig) + sizeof(Outputs) + 4, TempSensors);
+  EEPROM.put(sizeof(varConfig) + 3, OutputsBasicSettings);
+  EEPROM.put(sizeof(varConfig) + sizeof(OutputsBasicSettings) + 4, TempSensors);
 
   EEPROM.commit(); // Only needed for ESP8266 to get data written
   EEPROM.end();    // Free RAM copy of structure
@@ -376,13 +402,13 @@ bool EinstLaden()
   pointer = (unsigned char *)&varConfigTest;
   //EEPROM initialisieren
   unsigned int EEPROMSize;
-  EEPROMSize = sizeof(varConfig) + sizeof(Outputs) + sizeof(TempSensors) + 14;
+  EEPROMSize = sizeof(varConfig) + sizeof(OutputsBasicSettings) + sizeof(TempSensors) + 14;
   EEPROM.begin(EEPROMSize);
 
   EEPROM.get(0, varConfigTest);
   EEPROM.get(sizeof(varConfigTest) + 1, ChecksummeEEPROM);
-  EEPROM.get(sizeof(varConfig) + 3, Outputs);
-  EEPROM.get(sizeof(varConfig) + sizeof(Outputs) + 4, TempSensors);
+  EEPROM.get(sizeof(varConfig) + 3, OutputsBasicSettings);
+  EEPROM.get(sizeof(varConfig) + sizeof(OutputsBasicSettings) + 4, TempSensors);
   for (unsigned int i = 0; i < sizeof(varConfigTest); i++)
     Checksumme += pointer[i];
   if ((Checksumme == ChecksummeEEPROM) && (Checksumme != 0))
@@ -403,9 +429,9 @@ bool EinstLaden()
 //Resetvariable die hochzaehlt bei vorzeitigem Stromverlust um auf Standard-Wert wieder zurueckzustellen.
 void ResetVarSpeichern(char Count)
 {
-  EEPROM.begin(sizeof(varConfig) + sizeof(Outputs) + sizeof(TempSensors) + 14);
+  EEPROM.begin(sizeof(varConfig) + sizeof(OutputsBasicSettings) + sizeof(TempSensors) + 14);
 
-  EEPROM.put(sizeof(varConfig) + sizeof(Outputs) + sizeof(TempSensors) + 10, Count);
+  EEPROM.put(sizeof(varConfig) + sizeof(OutputsBasicSettings) + sizeof(TempSensors) + 10, Count);
 
   EEPROM.commit(); // Only needed for ESP8266 to get data written
   EEPROM.end();    // Free RAM copy of structure
@@ -414,7 +440,7 @@ char ResetVarLesen()
 {
   unsigned int EEPROMSize;
   char temp = 0;
-  EEPROMSize = sizeof(varConfig) + sizeof(Outputs) + sizeof(TempSensors) + 14;
+  EEPROMSize = sizeof(varConfig) + sizeof(OutputsBasicSettings) + sizeof(TempSensors) + 14;
   EEPROM.begin(EEPROMSize);
   EEPROM.get(EEPROMSize - 4, temp);
   delay(200);
@@ -629,7 +655,7 @@ void WebserverOutput(AsyncWebServerRequest *request)
     TempCurrentOutputState = (~Outputstates &((uint16) 1<<(i+8)))/((uint16)1<<(i+8)); //Manuel On or Off
     TempCurrentOutputState = (Outputstates &((uint16) 1<<i))?2:TempCurrentOutputState; //Auto or Manuell
     TempCurrentOutputState = OutputstatesAutoSSRelais&((uint8) 1<<i)?3:TempCurrentOutputState; //Auto over Solid state relais
-    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, Outputs[i].Name, TempCurrentOutputState, Inputs.OnTimeRatio[i], i, Outputs[i].StartValue, i, Un_Checked[Outputs[i].MQTTState%2].c_str());
+    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, OutputsBasicSettings[i].Name, TempCurrentOutputState, Inputs.OnTimeRatio[i], i, OutputsBasicSettings[i].StartValue, i, Un_Checked[OutputsBasicSettings[i].MQTTState%2].c_str());
     strcpy(HTMLString2, HTMLString);
   }
   sprintf(HTMLString2, html_OPSEfooter, HTMLString);
@@ -895,7 +921,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
           request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 808<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
           return;
         }
-        Outputs[Port].MQTTState = 0;
+        OutputsBasicSettings[Port].MQTTState = 0;
         switch(Value)
         {
           case 1:
@@ -904,7 +930,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
               request->send_P(200, "text/html", "Name zu lang Index 814<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
               return;
             }
-            strcpy(Outputs[Port].Name, request->getParam(i)->value().c_str());
+            strcpy(OutputsBasicSettings[Port].Name, request->getParam(i)->value().c_str());
             break;
           case 2:
             if((request->getParam(i)->value().toInt() > 3) || (request->getParam(i)->value().toInt() < 0))
@@ -912,8 +938,8 @@ void WebserverPOST(AsyncWebServerRequest *request)
               request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 822<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
               return;
             }
-            Outputs[Port].StartValue = request->getParam(i)->value().toInt();
-            if(Outputs[Port].StartValue == 3)
+            OutputsBasicSettings[Port].StartValue = request->getParam(i)->value().toInt();
+            if(OutputsBasicSettings[Port].StartValue == 3)
             {
               OutputstatesAutoSSRelais |= (1<<Port);
             }
@@ -928,7 +954,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
               request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 830<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
               return;
             }
-            Outputs[Port].MQTTState = 1;
+            OutputsBasicSettings[Port].MQTTState = 1;
             break;
           default:
             request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 836<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
