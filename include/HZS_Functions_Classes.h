@@ -3,12 +3,15 @@
 #include <Arduino.h>
 #include "Class_DS18B20.h"
 #include <Adafruit_MCP23X17.h>
+#include "MQ2lib.h"
 #define MCPPort0 39
 #define MCPPort1 38
 #define MCPOutput 0
 #define MCPInput 1
 #define INTPortA D3
 #define INTPortB D4
+#define AirSensOnOff D8
+#define AirSensAnalogPort A0
 
 struct NWConfig {
   //Einstellungen NW-Einstellungen WLAN
@@ -35,7 +38,7 @@ struct NWConfig {
 
 struct digital_Output{
   char Name[15]="unnamed";
-  byte StartValue = 2; //0 = off; 1 = on; 2 = Auto; --> ToDo 3 = Auto but Output over Solid State Relais 
+  byte StartValue = 2; //0 = off; 1 = on; 2 = Auto; 3 = Auto but Output over Solid State Relais 
   byte MQTTState = 0; //0 = MQTT control off; 1 = MQTT control on
 };
 
@@ -44,6 +47,28 @@ struct TempSensor{
   char Name[15] = ""; //Name of Sensor
   byte SensorState = 0; //0 = Sensor not found; 1 = Sensor found; 2 = MQTT enabled for found sensor
   float Offset = 0;
+};
+
+class AirQualitySensor{
+public:
+  AirQualitySensor(uint8 _PortOnOff, uint8 _PortAnalogInput);
+  ~AirQualitySensor();
+  byte getSensorState();
+  void setSensorState(byte newState);
+  byte toggleSensorState();
+  uint32 getOnTime_s();
+  float readLPG();
+  float readCO();
+  float readSMOKE();
+  uint16 getHWValue();  //Get the AD value 
+private:
+  byte SensorState; 
+  unsigned long OnTime_ms;
+  uint32 HeatingTime_ms; 
+  byte AirSensInitiated;
+  byte PortOnOff;
+  byte PortAnalogInput;
+  MQ2 * AirSens;
 };
 
 struct digital_Input{

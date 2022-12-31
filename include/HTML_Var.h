@@ -6,7 +6,7 @@
 // enum {dtYear, dtMonth, dtDay}; //Tag = 2; Monat = 1; Jahr = 0
 const String WeekDays[7]={"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"};
 // //Allgemeine Definitionen
-enum {subwl = 27767, subnw = 30574, subcn = 20035, subpd = 17488, subps = 21328, sublf = 17996, sublm = 19788, submq = 29037, subPS = 21328, subSD = 17491, subSS = 21331, subOS = 21327}; //Zuordnung der Submit-Bereiche einer Ganzzahl
+enum {subwl = 27767, subnw = 30574, subcn = 20035, subpd = 17488, subps = 21328, sublf = 17996, sublm = 19788, submq = 29037, subPS = 21328, subSD = 17491, subSS = 21331, subOS = 21327, subAS = 21313}; //Zuordnung der Submit-Bereiche einer Ganzzahl
 enum {touchUp_wsgn = 33, touchDown_gn = 32, touchRight_wsbr = 15, touchLeft_br = 4, touchF1_bl = 13, touchF2_wsbl = 12, touchF3_or = 14, touchF4_wsor = 27, RGB_Red = 22, RGB_Green = 16, RGB_Blue = 17, Display_Beleuchtung = 21};
 enum {indexAGM = 0, indexLED = 1, indexProgStart = 2, indexNWK = 3};
 enum {NW_WiFi_AP = 0x01, NW_StaticIP = 0x02, NW_EthernetActive = 0x04, NW_MQTTActive = 0x08, NW_MQTTSecuree = 0x10}; //Enum for NWConfig
@@ -37,15 +37,50 @@ Uhrzeit: %s | Datum: %s, %02d.%02d.%d | Status:
 
 
 const char html_SEconfig1[] PROGMEM = R"rawliteral(
+%s
 <h1>Sensor Einstellungen</h1><hr>
 <h2>Luftsensor</h2><br />
+<table> <!-- 'border="1"-->
+  <tbody><tr>
+    <td width="150" valign="TOP">
+      <h3>Sensorstatus</h3> <br></td>
+    <td width="150" valign="TOP">
+	  <h3>Einschaltdauer</h3></td>
+    <td width="150" valign="TOP">
+	  <h3>Messwert LPG</h3></td>
+    <td width="200" valign="TOP">
+	  <h3>Messwert CO</h3></td>
+    <td width="200" valign="TOP">
+	  <h3>Messwert Rauch</h3></td>
+    <td width="200" valign="TOP">
+	  <h3>Messwert AD Wandler</h3></td>
+    <td width="200" valign="TOP">
+	  </td>
+  </tr>
+  <tr>
+  <form method="post" action="http://192.168.63.47/POST">
+    <td valign="TOP">
+	  %s</td>
+    <td valign="TOP">
+	  %u s</td>
+    <td valign="TOP">
+	  %f ppm</td>
+    <td valign="TOP">
+	  %f ppm</td>
+    <td valign="TOP">
+	  %f ppm</td>
+    <td valign="TOP">
+	  %d</td>
+    <td valign="TOP">
+	  <input type="hidden" name="AS_OnOff" value="all"><input value="Ein/Aus" type="submit"></td>
+  </tr></form>
+</tbody></table>
 <hr>
 <datalist id="SensorStates">
   <option value="1">Aktiv</option>
   <option value="0">nicht konfiguriert</option>
   <option value="2">nicht verbunden</option>
 </datalist>
-
 <h2>Temperatursensoren</h2><br />
 <form method="post" action="/POST">
 <input type="hidden" name="SSearch" value="all"><input value="Sensorsuche" type="submit">

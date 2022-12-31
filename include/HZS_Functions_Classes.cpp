@@ -1,6 +1,102 @@
 #include "HZS_Functions_Classes.h"
 //#define BGTDEBUG
 
+//Class functions für AirQualitySensor
+
+AirQualitySensor::AirQualitySensor(uint8 _PortOnOff, uint8 _PortAnalogInput):
+SensorState(0),
+OnTime_ms(0),
+HeatingTime_ms(6000), //10 Minutes
+AirSensInitiated(0)
+{
+  PortOnOff = _PortOnOff;
+  PortAnalogInput = _PortAnalogInput;
+  pinMode(PortOnOff, OUTPUT);
+  digitalWrite(PortOnOff, 0);
+  AirSens= new MQ2(_PortAnalogInput);
+}
+AirQualitySensor::~AirQualitySensor()
+{
+  digitalWrite(PortOnOff, 0);
+  pinMode(PortOnOff, INPUT);
+  delete AirSens;
+}
+byte AirQualitySensor::getSensorState()
+{
+  return SensorState;
+}
+void AirQualitySensor::setSensorState(byte newState)
+{
+  if(newState > 1)
+  return;
+  if(newState)
+    OnTime_ms = millis();
+  else
+  {
+    OnTime_ms = 0;
+    AirSensInitiated = 0;
+  }
+  digitalWrite(PortOnOff, newState);
+  SensorState = newState;
+}
+byte AirQualitySensor::toggleSensorState()
+{
+  setSensorState((SensorState + 1)%2);
+  return SensorState;
+}
+uint32 AirQualitySensor::getOnTime_s()
+{
+  if(SensorState)
+    return ((millis() - OnTime_ms)/1000);
+  else
+    return 0;
+}
+float AirQualitySensor::readLPG()
+{
+  if(!SensorState || ((millis()-OnTime_ms) < HeatingTime_ms))
+    return -1;
+  if(!AirSensInitiated)
+  {
+    AirSens->begin();
+    AirSensInitiated = 1;
+    return 0;
+  }
+  else
+    return AirSens->readLPG();
+  return 0;
+}
+float AirQualitySensor::readCO()
+{
+  if(!SensorState || ((millis()-OnTime_ms) < HeatingTime_ms))
+    return -1;
+  if(!AirSensInitiated)
+  {
+    AirSens->begin();
+    AirSensInitiated = 1;
+    return 0;
+  }
+  else
+    return AirSens->readCO();
+  return 0;
+}
+float AirQualitySensor::readSMOKE()
+{
+  if(!SensorState || ((millis()-OnTime_ms) < HeatingTime_ms))
+    return -1;
+  if(!AirSensInitiated)
+  {
+    AirSens->begin();
+    AirSensInitiated = 1;
+    return 0;
+  }
+  else
+    return AirSens->readSmoke();
+  return 0;
+}
+uint16 AirQualitySensor::getHWValue()
+{
+  return analogRead(PortAnalogInput);
+}
 
 //Input Output Functions
 TempSensor * FindTempSensor(TempSensor * TSArray, uint8 ArrayLen, uint64 Address)
@@ -125,13 +221,17 @@ uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * 
       switch(Config[i].StartValue)
       {
         case 1:
+          MCP[MCPOutput].pinMode(i+8, OUTPUT); //Switch SSRelais ON in Manu-Mode
           Manu_ONOFF &= ~(1<<i); //No break to switch into Manu Mode
         case 0:
+          MCP[MCPOutput].digitalWrite(i, 0);  //Switch Relais for Manu-Mode
           Manu_Auto &= ~(1<<i);
           break;
-        case 3: //Switch to Manu-Mode fist if any Input messured to save anergy
+        case 3: //Switch to Manu-Mode fist if any Input messured to save energy
           *AutoOverSSRelais |= (1<<i);
         case 2:
+          MCP[MCPOutput].pinMode(i+8, INPUT);  //Switch SSRelais of 
+          MCP[MCPOutput].digitalWrite(i, 1);    //Switch Relais to Auto-Mode
           break;        
         default:
           #ifdef BGTDEBUG
@@ -142,7 +242,6 @@ uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * 
     }
     OutputConfig = Manu_ONOFF << 8;
     OutputConfig |= Manu_Auto;
-    MCP[MCPOutput].writeGPIOAB(OutputConfig);
     return OutputConfig;
   }
   return 0xFFFF; //Return all ports Auto
@@ -155,19 +254,19 @@ void SetOutput(int OutputIndex, int Value, uint16 * _OutputStates, Adafruit_MCP2
   {
     case 1:
       MCP->digitalWrite(OutputIndex, 0);  //Switch to Manu mode
-      MCP->digitalWrite(OutputIndex + 8, 0); //Switch on the SSR (Solid State Relais) for Manu On
+      MCP->pinMode(OutputIndex + 8, OUTPUT); //Switch on the SSR (Solid State Relais) for Manu On
       *_OutputStates &= (uint16) ~(((uint16) 1<<OutputIndex)+((uint16) 1<<(OutputIndex+8)));
       break;
     case 0:
       MCP->digitalWrite(OutputIndex, 0); //Switch to Manu mode
-      MCP->digitalWrite(OutputIndex + 8, 1); //Switch off the SSR for Manu Off
+      MCP->pinMode(OutputIndex + 8, INPUT); //Switch off the SSR for Manu Off
       *_OutputStates &= (uint16) ~(((uint16) 1<<OutputIndex));
       *_OutputStates |= (uint16)((uint16)1<<(OutputIndex+8));
       break;
     case 2:
     case 3:
       MCP->digitalWrite(OutputIndex, 1); //Switch to Auto mode
-      MCP->digitalWrite(OutputIndex + 8, 1); //Switch off the SSR for Manu Off
+      MCP->pinMode(OutputIndex + 8, INPUT); //Switch off the SSR for Manu Off
       *_OutputStates |= (uint16)(((uint16)1<<OutputIndex)+((uint16)1<<(OutputIndex+8)));
       break;
     default:

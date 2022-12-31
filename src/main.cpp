@@ -24,13 +24,12 @@
 //Port extension
 #include <Adafruit_MCP23X17.h>
 
-
 #define BGTDEBUG 0
 
 
 //Funktionsdefinitionen
 //Functions for Ethernet or WiFi connections
-void NetworkInit();
+void NetworkInit(bool OnlyWiFi = false);
 void WiFi_Start_STA(char *ssid_sta, char *password_sta);
 void WiFi_Start_AP();
 bool WIFIConnectionCheck(bool with_reconnect);
@@ -59,6 +58,7 @@ bool MQTT_sendMessage(const char * ValueName, float MSG);
 
 //Projektvariablen
 NWConfig varConfig;
+uint8 MQTT_NTP_over_Ethernet_activ = 0;
 char const EthernetMAC[] = "A0:A1:A2:A3:A4:A5";         //For Ethernet connection (MQTT)
 uint8 const mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5}; //For Ethernet connection
 bool ESP_Restart = false;                         //Variable for a restart with delay in WWW Request
@@ -80,6 +80,7 @@ const uint8 MaxSensors = 15;
 TSensorArray SensorPort1(9);
 TSensorArray SensorPort2(10);
 TempSensor TempSensors[MaxSensors]; //Variable array for save Information about DS18B20 sensors.
+AirQualitySensor * AirSensValues;
 //Port extension
 Adafruit_MCP23X17 mcp[2];
 int MCPState[2] = {0, 0}; //0 = not connected, 1 = connected, 2 = error
@@ -143,6 +144,9 @@ void setup(void) {
   Inputs.StatesHW = MCPinit(mcp, MCPState);
   MQTT_SendInputStates();
   Outputstates = InitOutputStates(mcp, OutputsBasicSettings, MCPState, &OutputstatesAutoSSRelais); 
+
+  //AirSens init
+  AirSensValues = new AirQualitySensor(AirSensOnOff, AirSensAnalogPort);
 }
 void loop(void) {
   //OTA
@@ -170,6 +174,12 @@ void loop(void) {
     Break_10s = millis() + 10000;
     SensorPort1.StartConversion();
     SensorPort2.StartConversion();
+    MQTT_sendMessage("AirQuality/ADConverter", AirSensValues->getHWValue());
+    MQTT_sendMessage("AirQuality/LPG", AirSensValues->readLPG());
+    MQTT_sendMessage("AirQuality/CO", AirSensValues->readCO());
+    MQTT_sendMessage("AirQuality/Smoke", AirSensValues->readSMOKE());
+    MQTT_sendMessage("AirQuality/SensorState", AirSensValues->getSensorState());
+    
     #ifdef BGTDEBUG
       Serial.print(timeClient->getFormattedTime());
       Serial.print(" ");
@@ -259,6 +269,8 @@ bool MQTTinit()
     SubscribeRootTemp += SubscribeRoot[1];
     SubscribeTemp = SubscribeRootTemp + "WLAN_active";
     MQTTclient->subscribe(SubscribeTemp.c_str());
+    SubscribeTemp = SubscribeRootTemp + "AirSens_active";
+    MQTTclient->subscribe(SubscribeTemp.c_str());
     return true;
   }
   else
@@ -284,6 +296,8 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
 {
   String TempTopic = topic;
   String Value = (char*) payload;
+  Value = Value.substring(0, length);
+  
   if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + SubscribeRoot[0].length()))==SubscribeRoot[0])
   {
     int OutputIndex = FindOutputName(topic), ValueTemp = 0;
@@ -295,7 +309,6 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
       MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
       return;
     }
-    Value = Value.substring(0, length);
     ValueTemp = Value.toInt();
     SetOutput(OutputIndex, ValueTemp, &Outputstates, &mcp[MCPOutput]);
     if(ValueTemp!=3)
@@ -315,11 +328,15 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
           break;
         case 1:
           if(!WiFi.isConnected())
-            NetworkInit();
+            NetworkInit(true);
           break;
         default:
           break;
       }
+    }
+    else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath) + SubscribeRoot[1].length())=="AirSens_active")
+    {
+      AirSensValues->setSensorState(Value.toInt());
     }
   }
 }
@@ -449,7 +466,7 @@ char ResetVarLesen()
 }
 //---------------------------------------------------------------------
 //Network functions
-void NetworkInit()
+void NetworkInit(bool OnlyWiFi)
 {
   //start WLAN
   if (varConfig.NW_Flags & NW_WiFi_AP)
@@ -460,6 +477,8 @@ void NetworkInit()
   {
     WiFi_Start_STA(varConfig.WLAN_SSID, varConfig.WLAN_Password);
   }
+  if(OnlyWiFi)
+    return;
   if(varConfig.NW_Flags & NW_EthernetActive)  //If Ethernet active than MQTT should connected over Ethernet
   {
     Ethernet.init(D0);
@@ -470,11 +489,18 @@ void NetworkInit()
         Serial.println(Ethernet.gatewayIP());
         Serial.println(Ethernet.subnetMask());
       #endif
+      e_client = new EthernetClient;
+      if(varConfig.NW_Flags & NW_MQTTActive)
+        MQTTclient = new PubSubClient(*e_client);
+      ntpUDP = new EthernetUDP;
+      MQTT_NTP_over_Ethernet_activ = 1;
     }
-    e_client = new EthernetClient;
-    if(varConfig.NW_Flags & NW_MQTTActive)
-      MQTTclient = new PubSubClient(*e_client);
-    ntpUDP = new EthernetUDP;
+    else
+    {
+      if(varConfig.NW_Flags & NW_MQTTActive)
+        MQTTclient = new PubSubClient(*wifiClient);
+      ntpUDP = new WiFiUDP;
+    }
   }
   else
   {
@@ -614,21 +640,29 @@ void WebserverSensors(AsyncWebServerRequest *request)
   int currentMonth = ptm->tm_mon + 1;
   int currentYear = ptm->tm_year + 1900;
   sprintf(HTMLString, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear);
-  sprintf(HTMLString2, "%s%s", HTMLString, html_SEconfig1);
+  sprintf(HTMLString2, html_SEconfig1, HTMLString, Ein_Aus[AirSensValues->getSensorState()].c_str(), AirSensValues->getOnTime_s(), AirSensValues->readLPG(), AirSensValues->readCO(), 
+                  AirSensValues->readSMOKE(), AirSensValues->getHWValue());
   for(int i = 0; i < SensorPort1.GetSensorCount(); i++)
   {
-    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort1.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort1.GetSensorIndex(i)->getTempC(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), SensorPort1.GetSensorIndex(i)->getName().c_str(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), SensorPort1.GetSensorIndex(i)->getOffset(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), FindTempSensor(TempSensors, MaxSensors, SensorPort1.GetSensorIndex(i)->getAddressUINT64())->SensorState);
+    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort1.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort1.GetSensorIndex(i)->getTempC(), 1, 
+                  SensorPort1.GetSensorIndex(i)->getAddressUINT64(), SensorPort1.GetSensorIndex(i)->getName().c_str(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), 
+                  SensorPort1.GetSensorIndex(i)->getOffset(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), FindTempSensor(TempSensors, MaxSensors, 
+                  SensorPort1.GetSensorIndex(i)->getAddressUINT64())->SensorState);
     strcpy(HTMLString2, HTMLString);
   }
   for(int i = 0; i < SensorPort2.GetSensorCount(); i++)
   {
-    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort2.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort2.GetSensorIndex(i)->getTempC(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(), SensorPort2.GetSensorIndex(i)->getName().c_str(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(), SensorPort2.GetSensorIndex(i)->getOffset(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(), FindTempSensor(TempSensors, MaxSensors, SensorPort2.GetSensorIndex(i)->getAddressUINT64())->SensorState);
+    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort2.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort2.GetSensorIndex(i)->getTempC(), 2, 
+                  SensorPort2.GetSensorIndex(i)->getAddressUINT64(), SensorPort2.GetSensorIndex(i)->getName().c_str(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 
+                  SensorPort2.GetSensorIndex(i)->getOffset(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(), FindTempSensor(TempSensors, MaxSensors, 
+                  SensorPort2.GetSensorIndex(i)->getAddressUINT64())->SensorState);
     strcpy(HTMLString2, HTMLString);
   }
   sprintf(HTMLString, html_SEconfig3, HTMLString2);
   for(int i = 0; i < countMissingSensors; i++)
   {
-    sprintf(HTMLString2, html_SEconfig4, HTMLString, convertUINT64toHEXstr(&MissingSensors[i]->Address).c_str(), MissingSensors[i]->Name, MissingSensors[i]->Offset, MissingSensors[i]->SensorState, MissingSensors[i]->Address);
+    sprintf(HTMLString2, html_SEconfig4, HTMLString, convertUINT64toHEXstr(&MissingSensors[i]->Address).c_str(), MissingSensors[i]->Name, MissingSensors[i]->Offset, 
+                  MissingSensors[i]->SensorState, MissingSensors[i]->Address);
     strcpy(HTMLString, HTMLString2);  
   }
   sprintf(HTMLString2, html_OPSEfooter, HTMLString);
@@ -655,7 +689,8 @@ void WebserverOutput(AsyncWebServerRequest *request)
     TempCurrentOutputState = (~Outputstates &((uint16) 1<<(i+8)))/((uint16)1<<(i+8)); //Manuel On or Off
     TempCurrentOutputState = (Outputstates &((uint16) 1<<i))?2:TempCurrentOutputState; //Auto or Manuell
     TempCurrentOutputState = OutputstatesAutoSSRelais&((uint8) 1<<i)?3:TempCurrentOutputState; //Auto over Solid state relais
-    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, OutputsBasicSettings[i].Name, TempCurrentOutputState, Inputs.OnTimeRatio[i], i, OutputsBasicSettings[i].StartValue, i, Un_Checked[OutputsBasicSettings[i].MQTTState%2].c_str());
+    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, OutputsBasicSettings[i].Name, TempCurrentOutputState, Inputs.OnTimeRatio[i], i, OutputsBasicSettings[i].StartValue, i, 
+                  Un_Checked[OutputsBasicSettings[i].MQTTState%2].c_str());
     strcpy(HTMLString2, HTMLString);
   }
   sprintf(HTMLString2, html_OPSEfooter, HTMLString);
@@ -908,6 +943,18 @@ void WebserverPOST(AsyncWebServerRequest *request)
       TakeoverTSConfig(&SensorPort1, TempSensors, MaxSensors);
       TakeoverTSConfig(&SensorPort2, TempSensors, MaxSensors);
       request->send_P(200, "text/html", "Sensoren wurden neu eingelesen!<br><meta http-equiv=\"refresh\" content=\"2; URL=/Sensors/\">"); //<a href=\>Startseite</a>
+      break;
+    }            
+    case subAS:
+    {
+      if(AirSensValues->toggleSensorState())
+      {
+        request->send_P(200, "text/html", "Luft-Sensor wurde eingeschaltet!<br><meta http-equiv=\"refresh\" content=\"2; URL=/Sensors/\">");
+      }
+      else
+      {
+        request->send_P(200, "text/html", "Luft-Sensor wurde ausgeschaltet!<br><meta http-equiv=\"refresh\" content=\"2; URL=/Sensors/\">");
+      }
       break;
     }            
     case subOS:
