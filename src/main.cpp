@@ -87,8 +87,7 @@ int MCPState[2] = {0, 0}; //0 = not connected, 1 = connected, 2 = error
 //Output Input configuration
 digital_Output OutputsBasicSettings[8];  //Variable array for save Output Information.
 digital_Input Inputs;  //Variable to save current states and auxiliary variables of digital inputs
-uint16 Outputstates = 0xFFFF; //Variable for the current states of the Output MCP[0]
-uint16 OutputstatesAutoSSRelais = 0x0000;  //Variable for the Auto over SSR-Settings
+digital_Output_current_Values Output_Values;
 
 
 void setup(void) {
@@ -104,8 +103,14 @@ void setup(void) {
   ResetVarSpeichern(ResetCount);
   delay(5000);
   if (ResetCount < 5) //If controller restart 5 times in first 5 seconds do not load saved settings (basic setting will setted)
+  {    
     if(!EinstLaden()) //If failure then standard config will be saved
       EinstSpeichern();
+  }
+  else
+  {
+    ResetCount = 0;
+  }
   ResetVarSpeichern(0);
   TakeoverTSConfig(&SensorPort1, TempSensors, MaxSensors);
   TakeoverTSConfig(&SensorPort2, TempSensors, MaxSensors);
@@ -143,7 +148,7 @@ void setup(void) {
   //Port Extension
   Inputs.StatesHW = MCPinit(mcp, MCPState);
   MQTT_SendInputStates();
-  Outputstates = InitOutputStates(mcp, OutputsBasicSettings, MCPState, &OutputstatesAutoSSRelais); 
+  Output_Values.Outputstates = InitOutputStates(mcp, OutputsBasicSettings, MCPState, &Output_Values.OutputstatesAutoSSRelais); 
 
   //AirSens init
   AirSensValues = new AirQualitySensor(AirSensOnOff, AirSensAnalogPort);
@@ -225,7 +230,11 @@ void loop(void) {
       }
     }
   }
-  if(readDigitalInputs_SetOutputIfAutoSSRMode(digitalRead(INTPortA), &Inputs, mcp, OutputstatesAutoSSRelais, &Outputstates))
+  if(Output_Values.PWM_Manu_activ)
+  {
+    updateOutputPWM(mcp, &Output_Values);
+  }
+  if(readDigitalInputs_SetOutputIfAutoSSRMode(digitalRead(INTPortA), &Inputs, mcp, &Output_Values))
   {
     MQTT_SendInputStates();
   }
@@ -310,11 +319,11 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
       return;
     }
     ValueTemp = Value.toInt();
-    SetOutput(OutputIndex, ValueTemp, &Outputstates, &mcp[MCPOutput]);
+    SetOutput(OutputIndex, ValueTemp, &Output_Values, mcp);
     if(ValueTemp!=3)
-      OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      Output_Values.OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
     if(ValueTemp==3)
-      OutputstatesAutoSSRelais |= (1<<OutputIndex);
+      Output_Values.OutputstatesAutoSSRelais |= (1<<OutputIndex);
   }
   else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + SubscribeRoot[1].length()))==SubscribeRoot[1])
   {
@@ -448,7 +457,8 @@ void ResetVarSpeichern(char Count)
 {
   EEPROM.begin(sizeof(varConfig) + sizeof(OutputsBasicSettings) + sizeof(TempSensors) + 14);
 
-  EEPROM.put(sizeof(varConfig) + sizeof(OutputsBasicSettings) + sizeof(TempSensors) + 10, Count);
+//  EEPROM.put(sizeof(varConfig) + sizeof(OutputsBasicSettings) + sizeof(TempSensors) + 10, Count);
+  EEPROM.put(sizeof(varConfig) + 2, Count);
 
   EEPROM.commit(); // Only needed for ESP8266 to get data written
   EEPROM.end();    // Free RAM copy of structure
@@ -459,7 +469,8 @@ char ResetVarLesen()
   char temp = 0;
   EEPROMSize = sizeof(varConfig) + sizeof(OutputsBasicSettings) + sizeof(TempSensors) + 14;
   EEPROM.begin(EEPROMSize);
-  EEPROM.get(EEPROMSize - 4, temp);
+//  EEPROM.get(EEPROMSize - 4, temp);
+  EEPROM.get(sizeof(varConfig) + 2, temp);
   delay(200);
   EEPROM.end(); // Free RAM copy of structure
   return temp;
@@ -686,9 +697,9 @@ void WebserverOutput(AsyncWebServerRequest *request)
   sprintf(HTMLString2, "%s%s", HTMLString, html_OPconfig1);
   for(int i = 0; i < 8; i++)
   {
-    TempCurrentOutputState = (~Outputstates &((uint16) 1<<(i+8)))/((uint16)1<<(i+8)); //Manuel On or Off
-    TempCurrentOutputState = (Outputstates &((uint16) 1<<i))?2:TempCurrentOutputState; //Auto or Manuell
-    TempCurrentOutputState = OutputstatesAutoSSRelais&((uint8) 1<<i)?3:TempCurrentOutputState; //Auto over Solid state relais
+    TempCurrentOutputState = (~Output_Values.Outputstates &((uint16) 1<<(i+8)))/((uint16)1<<(i+8)); //Manuel On or Off
+    TempCurrentOutputState = (Output_Values.Outputstates &((uint16) 1<<i))?2:TempCurrentOutputState; //Auto or Manuell
+    TempCurrentOutputState = Output_Values.OutputstatesAutoSSRelais&((uint8) 1<<i)?3:TempCurrentOutputState; //Auto over Solid state relais
     sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, OutputsBasicSettings[i].Name, TempCurrentOutputState, Inputs.OnTimeRatio[i], i, OutputsBasicSettings[i].StartValue, i, 
                   Un_Checked[OutputsBasicSettings[i].MQTTState%2].c_str());
     strcpy(HTMLString2, HTMLString);
@@ -988,11 +999,11 @@ void WebserverPOST(AsyncWebServerRequest *request)
             OutputsBasicSettings[Port].StartValue = request->getParam(i)->value().toInt();
             if(OutputsBasicSettings[Port].StartValue == 3)
             {
-              OutputstatesAutoSSRelais |= (1<<Port);
+              Output_Values.OutputstatesAutoSSRelais |= (1<<Port);
             }
             else
             {
-              OutputstatesAutoSSRelais &= ~(1<<Port);
+              Output_Values.OutputstatesAutoSSRelais &= ~(1<<Port);
             }
             break;
           case 3:
