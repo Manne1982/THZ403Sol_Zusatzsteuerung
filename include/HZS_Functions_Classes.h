@@ -42,6 +42,17 @@ struct digital_Output{
   byte MQTTState = 0; //0 = MQTT control off; 1 = MQTT control on
 };
 
+struct digital_Output_current_Values{
+  uint16 Outputstates = 0xFFFF; //Variable for the current states of the Output MCP[0]
+  uint16 OutputstatesAutoSSRelais = 0x0000;  //Variable for the Auto over SSR-Settings
+  uint8 PWM_Manu_activ = 0x00; 
+  uint8 PWM_Value[8] = {25, 25, 25, 25, 25, 25, 25, 25};
+  uint16 PWM_CycleTime_ms = 5000;
+  uint8 PWM_Min = 25;
+  uint8 PWM_Max = 230;
+  uint8 PWM_CurrentState = 0;
+};
+
 struct TempSensor{
   uint64 Address = 0; //8 Byte Address saved as unsigned int for easier comparison
   char Name[15] = ""; //Name of Sensor
@@ -88,8 +99,12 @@ uint8 FindMissingSensors(TSensorArray * TSensArray1, TSensorArray * TSensArray2,
 int MCPSetup(Adafruit_MCP23X17 * MCP, int MCPAddress);
 uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates);
 uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates, uint16 * AutoOverSSRelais); //MCPStates: 0= Not initiated, 1= connected, 2 = error
-void SetOutput(int OutputIndex, int Value, uint16 * OutputConfig, Adafruit_MCP23X17 * MCP);
-bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 * MCP, uint8 AutoSSRMode, uint16 * _OutputStates);
+void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Output, Adafruit_MCP23X17 * _MCP, int * MCPStates);
+bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _Inputs, Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output, int * MCPStates);
+void updateOutputPWM(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output, int * MCPStates);
+void setRelaisManuAuto(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 Manu, int * MCPStates);
+void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * MCPStates);
+
 
 //General functions
 uint64 StrToLongInt(String Input);

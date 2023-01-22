@@ -246,28 +246,40 @@ uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * 
   }
   return 0xFFFF; //Return all ports Auto
 }
-void SetOutput(int OutputIndex, int Value, uint16 * _OutputStates, Adafruit_MCP23X17 * MCP)
+void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Output, Adafruit_MCP23X17 * _MCP, int * MCPStates)
 {
-  if((Value < 0) || (Value > 3))
+  if(MCPStates[MCPOutput] != 1)
+    return;
+  if((Value < 0) || (Value > 4))
     return;
   switch(Value)
   {
     case 1:
-      MCP->digitalWrite(OutputIndex, 0);  //Switch to Manu mode
-      MCP->pinMode(OutputIndex + 8, OUTPUT); //Switch on the SSR (Solid State Relais) for Manu On
-      *_OutputStates &= (uint16) ~(((uint16) 1<<OutputIndex)+((uint16) 1<<(OutputIndex+8)));
+      setRelaisManuAuto(_MCP, OutputIndex, 1, MCPStates);
+      setSSR(_MCP, OutputIndex, 1, MCPStates);
+      _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex)+((uint16) 1<<(OutputIndex+8)));
+      _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
       break;
     case 0:
-      MCP->digitalWrite(OutputIndex, 0); //Switch to Manu mode
-      MCP->pinMode(OutputIndex + 8, INPUT); //Switch off the SSR for Manu Off
-      *_OutputStates &= (uint16) ~(((uint16) 1<<OutputIndex));
-      *_OutputStates |= (uint16)((uint16)1<<(OutputIndex+8));
+      setRelaisManuAuto(_MCP, OutputIndex, 1, MCPStates);
+      setSSR(_MCP, OutputIndex, 0, MCPStates);
+      _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex));
+      _Output->Outputstates |= (uint16)((uint16)1<<(OutputIndex+8));
+      _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
       break;
     case 2:
     case 3:
-      MCP->digitalWrite(OutputIndex, 1); //Switch to Auto mode
-      MCP->pinMode(OutputIndex + 8, INPUT); //Switch off the SSR for Manu Off
-      *_OutputStates |= (uint16)(((uint16)1<<OutputIndex)+((uint16)1<<(OutputIndex+8)));
+      setRelaisManuAuto(_MCP, OutputIndex, 0, MCPStates);
+      setSSR(_MCP, OutputIndex, 0, MCPStates);
+      _Output->Outputstates |= (uint16)(((uint16)1<<OutputIndex)+((uint16)1<<(OutputIndex+8)));
+      _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
+      break;
+    case 4: //Manuel PWM mode, only configurable over MQTT
+      setRelaisManuAuto(_MCP, OutputIndex, 1, MCPStates);
+      setSSR(_MCP, OutputIndex, 0, MCPStates);
+      _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex));
+      _Output->Outputstates |= (uint16)((uint16)1<<(OutputIndex+8));
+      _Output->PWM_Manu_activ |= (1<<OutputIndex);
       break;
     default:
       #ifdef BGTDEBUG
@@ -277,59 +289,62 @@ void SetOutput(int OutputIndex, int Value, uint16 * _OutputStates, Adafruit_MCP2
   }
 
 }
-bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * Inputs, Adafruit_MCP23X17 * MCP, uint8 AutoSSRMode, uint16 * _OutputStates)
+bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _Inputs, Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output, int * MCPStates)
 {
   bool anyChange = false;
-  uint8 InputOldValue = Inputs->StatesHW;
-  if(!Interrupt)
+  uint8 InputOldValue = _Inputs->StatesHW;
+  if((MCPStates[MCPOutput] != 1)||(MCPStates[MCPInput] != 1))
+    return false;
+
+  if(!Interrupt) //is there any change of digital inputs
   {
     unsigned long currentTime = millis();
-    Inputs->StatesHW = MCP[MCPInput].readGPIOA();
+    _Inputs->StatesHW = _MCP[MCPInput].readGPIOA();
     for (int i = 0; i < 8; i++)
     {
-      switch(Inputs->ReadStep[i])
+      switch(_Inputs->ReadStep[i])
       {
         case 4: //Input was off for more than 10 s
         case 0: //Meassurement not started and start with hight edge (Input inverted)
-          if(!(Inputs->StatesHW & (1<<i)))
+          if(!(_Inputs->StatesHW & (1<<i)))
           {
-            Inputs->TimeStartpoints[i][0] = currentTime;
-            Inputs->ReadStep[i] = 1;
-            Inputs->OnTimeRatio[i] = 255;
+            _Inputs->TimeStartpoints[i][0] = currentTime;
+            _Inputs->ReadStep[i] = 1;
+            _Inputs->OnTimeRatio[i] = 255;
           }
           break;
         case 1: //Meassurement started low time and start with falling edge
-          if(Inputs->StatesHW & (1<<i))
+          if(_Inputs->StatesHW & (1<<i))
           {
-            if((Inputs->OnTimeRatio[i] == 255)&&(Inputs->TimeStartpoints[i][0]==0))
-              Inputs->OnTimeRatio[i] = 0;
-            Inputs->TimeStartpoints[i][1] = currentTime;
-            Inputs->ReadStep[i]++;
+            if((_Inputs->OnTimeRatio[i] == 255)&&(_Inputs->TimeStartpoints[i][0]==0))
+              _Inputs->OnTimeRatio[i] = 0;
+            _Inputs->TimeStartpoints[i][1] = currentTime;
+            _Inputs->ReadStep[i]++;
           }
           break;
         case 2: //cycle finished and write the Ratio value
-          if(!(Inputs->StatesHW & (1<<i)))
+          if(!(_Inputs->StatesHW & (1<<i)))
           {
                                      //  255 * on time / cycle time
-            Inputs->OnTimeRatio[i] = 255 * (Inputs->TimeStartpoints[i][1] - Inputs->TimeStartpoints[i][0]) / (currentTime - Inputs->TimeStartpoints[i][0]);
-            Inputs->TimeStartpoints[i][0] = currentTime;
-            Inputs->TimeStartpoints[i][1] = 0;
-            Inputs->ReadStep[i] = 1;
+            _Inputs->OnTimeRatio[i] = 255 * (_Inputs->TimeStartpoints[i][1] - _Inputs->TimeStartpoints[i][0]) / (currentTime - _Inputs->TimeStartpoints[i][0]);
+            _Inputs->TimeStartpoints[i][0] = currentTime;
+            _Inputs->TimeStartpoints[i][1] = 0;
+            _Inputs->ReadStep[i] = 1;
           }
           break;
         case 3: //Input was on for more than 10 s
-          if(Inputs->StatesHW & (1<<i))
+          if(_Inputs->StatesHW & (1<<i))
           {
-            Inputs->OnTimeRatio[i] = 0;
-            Inputs->ReadStep[i]= 0;
+            _Inputs->OnTimeRatio[i] = 0;
+            _Inputs->ReadStep[i]= 0;
           }
           break;
         default:
           break;
       }
-      if(Inputs->OnTimeRatio[i] && (AutoSSRMode & (1<<i))&&((InputOldValue&(1<<i))!=(Inputs->StatesHW&(1<<i))))
+      if(_Inputs->OnTimeRatio[i] && (_Output->OutputstatesAutoSSRelais & (1<<i))&&((InputOldValue&(1<<i))!=(_Inputs->StatesHW&(1<<i))))
       {
-        SetOutput(i, ((~Inputs->StatesHW & (1<<i))/(1<<i)), _OutputStates, &MCP[MCPOutput]);
+        SetOutput(i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), _Output, _MCP, MCPStates);
       }
     }
     anyChange = true;
@@ -339,31 +354,80 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * Inp
     unsigned long currentTime = millis();
     for (int i = 0; i < 8; i++)
     {
-      if((Inputs->ReadStep[i] == 3) || (Inputs->ReadStep[i] == 4))
+      if((_Inputs->ReadStep[i] == 3) || (_Inputs->ReadStep[i] == 4))
         continue;
-      if(((currentTime - Inputs->TimeStartpoints[i][0])>10000) && !(Inputs->StatesHW & (1<<i)))
+      if(((currentTime - _Inputs->TimeStartpoints[i][0])>10000) && !(_Inputs->StatesHW & (1<<i)))
       {
-        Inputs->OnTimeRatio[i] = 255;
-        Inputs->ReadStep[i] = 3;
-        Inputs->TimeStartpoints[i][0] = 0;
-        Inputs->TimeStartpoints[i][1] = 0;
+        _Inputs->OnTimeRatio[i] = 255;
+        _Inputs->ReadStep[i] = 3;
+        _Inputs->TimeStartpoints[i][0] = 0;
+        _Inputs->TimeStartpoints[i][1] = 0;
         anyChange = true;
       }
-      if(((currentTime - Inputs->TimeStartpoints[i][1])>10000) && (Inputs->StatesHW & (1<<i)))
+      if(((currentTime - _Inputs->TimeStartpoints[i][1])>10000) && (_Inputs->StatesHW & (1<<i)))
       {
-        Inputs->OnTimeRatio[i] = 0;
-        Inputs->ReadStep[i] = 4;
-        Inputs->TimeStartpoints[i][0] = 0;
-        Inputs->TimeStartpoints[i][1] = 0;
+        _Inputs->OnTimeRatio[i] = 0;
+        _Inputs->ReadStep[i] = 4;
+        _Inputs->TimeStartpoints[i][0] = 0;
+        _Inputs->TimeStartpoints[i][1] = 0;
         anyChange = true;
       }
-      if((Inputs->OnTimeRatio[i]==0)&&(AutoSSRMode & (1<<i))&&((~*_OutputStates) & (uint16)(1<<i))) //if Input ratio on 0 switch off the relais for Manu mode to save energy
+      if((_Inputs->OnTimeRatio[i]==0)&&(_Output->OutputstatesAutoSSRelais & (1<<i))&&((~_Output->Outputstates) & (uint16)(1<<i))) //if Input ratio on 0 switch off the relais for Manu mode to save energy
       {
-        SetOutput(i, 3, _OutputStates, &MCP[MCPOutput]);
+        SetOutput(i, 3, _Output, _MCP, MCPStates);
       }
     }
   }
   return anyChange;
+}
+void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * MCPStates)
+{
+  if(MCPStates[MCPOutput] != 1)
+    return;
+  if(OutputIndex>7)
+    return;
+  if(On_Off)
+    _MCP[MCPOutput].pinMode(OutputIndex + 8, OUTPUT); //Switch on the SSR (Solid State Relais)
+  else
+    _MCP[MCPOutput].pinMode(OutputIndex + 8, OUTPUT); //Switch on the SSR (Solid State Relais)
+}
+void setRelaisManuAuto(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 Manu, int * MCPStates)
+{
+  if(MCPStates[MCPOutput] != 1)
+    return;
+  if(OutputIndex>7)
+    return;
+  if(Manu)
+    _MCP[MCPOutput].digitalWrite(OutputIndex, 0);
+  else
+    _MCP[MCPOutput].digitalWrite(OutputIndex, 1);
+}
+void updateOutputPWM(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output, int * MCPStates)
+{
+  if(MCPStates[MCPOutput] != 1)
+    return;
+  for(int i = 0; i<8; i++)
+  {
+    if(_Output->PWM_Manu_activ & (1<<i))
+    {
+      if((millis()%_Output->PWM_CycleTime_ms)<((_Output->PWM_CycleTime_ms*_Output->PWM_Value[i]/255)))
+      {
+        if(!(_Output->PWM_CurrentState & (1<<i)))
+        {
+          setSSR(_MCP, i, 1, MCPStates);
+          _Output->PWM_CurrentState |= (1<<i);
+        }
+      }
+      else
+      {
+        if(_Output->PWM_CurrentState & (1<<i))
+        {
+          setSSR(_MCP, i, 0, MCPStates);
+          _Output->PWM_CurrentState &= ~(1<<i);
+        }
+      }
+    }
+  }
 }
 //---------------------------------------------------------------------
 uint64 StrToLongInt(String Input)
