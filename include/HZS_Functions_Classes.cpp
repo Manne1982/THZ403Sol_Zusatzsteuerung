@@ -382,7 +382,7 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _In
 }
 void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * MCPStates)
 {
-  if((MCPStates[MCPOutput] == 2)||(MCPStates[MCPInput] == 2))
+  if(MCPStates[MCPOutput] != 1)
     return;
   if(OutputIndex>7)
     return;

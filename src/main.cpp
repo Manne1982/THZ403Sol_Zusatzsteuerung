@@ -74,8 +74,8 @@ NTPClient * timeClient = 0;
 EthernetClient * e_client = 0;
 WiFiClient * wifiClient;
 PubSubClient * MQTTclient = 0;
-String SubscribeRoot[3] = {"/setOutput/", "/General/", "/setOutputPWM/"}; //{"/setOutput/", "/General/", "/setOutputPWM/"}
-String SendRoot[5] = {"PWM_Input/", "hwInput/", "OutputPWMValue/", "OutputPWMValue/", "OutputPWMValue/"}; //{"PWM_Input/", "hwInput/", "OutputPWMValue/", "OutputPWMValue/", "OutputPWMValue/"}
+String MQTTSubscribeRoot[3] = {"/setOutput/", "/setGeneral/", "/setOutputPWM/"}; //{"/setOutput/", "/General/", "/setOutputPWM/"}
+String MQTTSendRoot[6] = {"Input_PWM_Value/", "Input_direct/", "Output_PWM_Value/", "General_Information/", "TempSensors/", "AirQuality/"}; //{"Input_PWM_Value/", "Input_direct/", "Output_PWM_Value/", "General_Information/", "TempSensors/", "AirQuality/"}
 //Temperature sensors
 const uint8 MaxSensors = 15; 
 TSensorArray SensorPort1(9);
@@ -180,11 +180,11 @@ void loop(void) {
     Break_10s = millis() + 10000;
     SensorPort1.StartConversion();
     SensorPort2.StartConversion();
-    MQTT_sendMessage("AirQuality/ADConverter", AirSensValues->getHWValue());
-    MQTT_sendMessage("AirQuality/LPG", AirSensValues->readLPG());
-    MQTT_sendMessage("AirQuality/CO", AirSensValues->readCO());
-    MQTT_sendMessage("AirQuality/Smoke", AirSensValues->readSMOKE());
-    MQTT_sendMessage("AirQuality/SensorState", AirSensValues->getSensorState());
+    MQTT_sendMessage((MQTTSendRoot[5]+"ADConverter").c_str(), AirSensValues->getHWValue());
+    MQTT_sendMessage((MQTTSendRoot[5]+"LPG").c_str(), AirSensValues->readLPG());
+    MQTT_sendMessage((MQTTSendRoot[5]+"CO").c_str(), AirSensValues->readCO());
+    MQTT_sendMessage((MQTTSendRoot[5]+"Smoke").c_str(), AirSensValues->readSMOKE());
+    MQTT_sendMessage((MQTTSendRoot[5]+"SensorState").c_str(), AirSensValues->getSensorState());
     
     #ifdef BGTDEBUG
       Serial.print(timeClient->getFormattedTime());
@@ -213,7 +213,7 @@ void loop(void) {
     {
       if(SensorPort1.GetSensorIndex(i)->NewValueAvailable())
       {
-        SensorPathName = "TempSensors/" + SensorPort1.GetSensorIndex(i)->getName();
+        SensorPathName = MQTTSendRoot[4] + SensorPort1.GetSensorIndex(i)->getName();
         MQTT_sendMessage(SensorPathName.c_str(), SensorPort1.GetSensorIndex(i)->getTempC());
 //        MQTT_sendMessage(SensorPort1.GetSensorIndex(i)->getName().c_str(), SensorPort1.GetSensorIndex(i)->getTempC());
       }
@@ -226,7 +226,7 @@ void loop(void) {
     {
       if(SensorPort2.GetSensorIndex(i)->NewValueAvailable())
       {
-        SensorPathName = "TempSensors/" + SensorPort2.GetSensorIndex(i)->getName();
+        SensorPathName = MQTTSendRoot[4] + SensorPort2.GetSensorIndex(i)->getName();
         MQTT_sendMessage(SensorPathName.c_str(), SensorPort2.GetSensorIndex(i)->getTempC());
       }
     }
@@ -271,20 +271,20 @@ bool MQTTinit()
     String SubscribeRootTemp_setPWMVal = varConfig.MQTT_rootpath;
     String SubscribeTemp = "";
     String SendPathTemp;
-    SubscribeRootTemp_setOutput += SubscribeRoot[0];
-    SubscribeRootTemp_setPWMVal += SubscribeRoot[2];
+    SubscribeRootTemp_setOutput += MQTTSubscribeRoot[0];
+    SubscribeRootTemp_setPWMVal += MQTTSubscribeRoot[2];
     for(int i = 0; i < 8; i++)
     {
       SubscribeTemp = SubscribeRootTemp_setOutput + OutputsBasicSettings[i].Name;
       MQTTclient->subscribe(SubscribeTemp.c_str());
       SubscribeTemp = SubscribeRootTemp_setPWMVal + OutputsBasicSettings[i].Name;
       MQTTclient->subscribe(SubscribeTemp.c_str());
-      SendPathTemp = SendRoot[2];
+      SendPathTemp = MQTTSendRoot[2];
       SendPathTemp += OutputsBasicSettings[i].Name;
       MQTT_sendMessage(SendPathTemp.c_str(), Output_Values.PWM_Value[i]);
     }
     SubscribeRootTemp_setOutput = varConfig.MQTT_rootpath;
-    SubscribeRootTemp_setOutput += SubscribeRoot[1];
+    SubscribeRootTemp_setOutput += MQTTSubscribeRoot[1];
     SubscribeTemp = SubscribeRootTemp_setOutput + "WLAN_active";
     MQTTclient->subscribe(SubscribeTemp.c_str());
     SubscribeTemp = SubscribeRootTemp_setOutput + "AirSens_active";
@@ -316,9 +316,9 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
   String Value = (char*) payload;
   Value = Value.substring(0, length);
   
-  if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + SubscribeRoot[0].length()))==SubscribeRoot[0])
+  if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[0].length()))==MQTTSubscribeRoot[0])
   {
-    int OutputIndex = FindOutputName(&topic[strlen(varConfig.MQTT_rootpath) + SubscribeRoot[0].length()]), ValueTemp = 0;
+    int OutputIndex = FindOutputName(&topic[strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[0].length()]), ValueTemp = 0;
     if(OutputIndex < 0)
     { 
       String TempText = topic, TempPath = "Fehler";
@@ -334,9 +334,9 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
     if(ValueTemp==3)
       Output_Values.OutputstatesAutoSSRelais |= (1<<OutputIndex);
   }
-  else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + SubscribeRoot[1].length()))==SubscribeRoot[1])
+  else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[1].length()))==MQTTSubscribeRoot[1])
   {
-    if(TempTopic.substring(strlen(varConfig.MQTT_rootpath) + SubscribeRoot[1].length())=="WLAN_active")
+    if(TempTopic.substring(strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[1].length())=="WLAN_active")
     {
       switch(Value.toInt())
       {
@@ -352,32 +352,30 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
           break;
       }
     }
-    else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath) + SubscribeRoot[1].length())=="AirSens_active")
+    else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[1].length())=="AirSens_active")
     {
       AirSensValues->setSensorState(Value.toInt());
     }
-    else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + SubscribeRoot[2].length()))==SubscribeRoot[2])
-    {
-      int OutputIndex = FindOutputName(&topic[strlen(varConfig.MQTT_rootpath) + SubscribeRoot[2].length()]), ValueTemp = 0;
-      if(OutputIndex < 0)
-      { 
-        String TempText = topic, TempPath = "Fehler";
-        TempText += " -> ";
-        TempText += (char) payload[0];
-        MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
-        return;
-      }
-      ValueTemp = Value.toInt();
-      MQTT_sendMessage("Test", ValueTemp);
-      MQTT_sendMessage("Test2", (uint8 *) TempTopic.c_str(), TempTopic.length());
-      if((ValueTemp >= Output_Values.PWM_Min)&&(ValueTemp <= Output_Values.PWM_Max))
-      {
-        Output_Values.PWM_Value[OutputIndex] = (uint8) ValueTemp;
-        TempTopic = SendRoot[2];
-        TempTopic += OutputsBasicSettings[OutputIndex].Name;
-        MQTT_sendMessage(TempTopic.c_str(), ValueTemp);
-      }
+  }  
+  else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[2].length()))==MQTTSubscribeRoot[2])
+  {
+    int OutputIndex = FindOutputName(&topic[strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[2].length()]), ValueTemp = 0;
+    if(OutputIndex < 0)
+    { 
+      String TempText = topic, TempPath = "Fehler";
+      TempText += " -> ";
+      TempText += (char) payload[0];
+      MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
+      return;
     }
+    ValueTemp = Value.toInt();
+    if((ValueTemp >= Output_Values.PWM_Min)&&(ValueTemp <= Output_Values.PWM_Max))
+    {
+      Output_Values.PWM_Value[OutputIndex] = (uint8) ValueTemp;
+      TempTopic = MQTTSendRoot[2];
+      TempTopic += OutputsBasicSettings[OutputIndex].Name;
+      MQTT_sendMessage(TempTopic.c_str(), ValueTemp);
+    }    
   }
 }
 int FindOutputName(const char* Topic)
@@ -391,14 +389,14 @@ int FindOutputName(const char* Topic)
 }
 void MQTT_SendInputStates()
 {
-  String Temp = SendRoot[1] + "InputPort";
+  String Temp = MQTTSendRoot[1] + "InputPort";
   MQTT_sendMessage(Temp.c_str(), (uint8) ~Inputs.StatesHW);
   for(int i = 0; i<8; i++)
   {
-    Temp = SendRoot[0];
+    Temp = MQTTSendRoot[0];
     Temp += OutputsBasicSettings[i].Name;
     MQTT_sendMessage(Temp.c_str(), Inputs.OnTimeRatio[i]);
-    Temp.replace(SendRoot[0], SendRoot[1]);
+    Temp.replace(MQTTSendRoot[0], MQTTSendRoot[1]);
     MQTT_sendMessage(Temp.c_str(), Inputs.StatesHW&1<<i?0:1);
   }
 }
