@@ -99,11 +99,11 @@ uint8 FindMissingSensors(TSensorArray * TSensArray1, TSensorArray * TSensArray2,
 int MCPSetup(Adafruit_MCP23X17 * MCP, int MCPAddress);
 uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates);
 uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates, uint16 * AutoOverSSRelais); //MCPStates: 0= Not initiated, 1= connected, 2 = error
-void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Output, Adafruit_MCP23X17 * _MCP);
-bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _Inputs, Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output);
-void updateOutputPWM(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output);
-void setRelaisManuAuto(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 Manu);
-void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off);
+void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Output, Adafruit_MCP23X17 * _MCP, int * MCPStates);
+bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _Inputs, Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output, int * MCPStates);
+void updateOutputPWM(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output, int * MCPStates);
+void setRelaisManuAuto(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 Manu, int * MCPStates);
+void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * MCPStates);
 
 
 //General functions

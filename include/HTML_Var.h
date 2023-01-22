@@ -21,8 +21,8 @@ const char html_header[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML>
 <html>
 <head>
-  <title>Heizung Zusatzsteuerung</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1", charset="UTF-8">
+ <title>Heizung Zusatzsteuerung</title>
+ <meta name="viewport" content="width=device-width, initial-scale=1", charset="UTF-8">
 </head>
 <body bgcolor=\"#BBFFFF\">
 Uhrzeit: %s | Datum: %s, %02d.%02d.%d | Status: 
@@ -41,85 +41,85 @@ const char html_SEconfig1[] PROGMEM = R"rawliteral(
 <h1>Sensor Einstellungen</h1><hr>
 <h2>Luftsensor</h2><br />
 <table> <!-- 'border="1"-->
-  <tbody><tr>
-    <td width="150" valign="TOP">
-      <h3>Sensorstatus</h3> <br></td>
-    <td width="150" valign="TOP">
-	  <h3>Einschaltdauer</h3></td>
-    <td width="150" valign="TOP">
-	  <h3>Messwert LPG</h3></td>
-    <td width="200" valign="TOP">
-	  <h3>Messwert CO</h3></td>
-    <td width="200" valign="TOP">
-	  <h3>Messwert Rauch</h3></td>
-    <td width="200" valign="TOP">
-	  <h3>Messwert AD Wandler</h3></td>
-    <td width="200" valign="TOP">
-	  </td>
-  </tr>
-  <tr>
-  <form method="post" action="http://192.168.63.47/POST">
-    <td valign="TOP">
-	  %s</td>
-    <td valign="TOP">
-	  %u s</td>
-    <td valign="TOP">
-	  %f ppm</td>
-    <td valign="TOP">
-	  %f ppm</td>
-    <td valign="TOP">
-	  %f ppm</td>
-    <td valign="TOP">
-	  %d</td>
-    <td valign="TOP">
-	  <input type="hidden" name="AS_OnOff" value="all"><input value="Ein/Aus" type="submit"></td>
-  </tr></form>
+ <tbody><tr>
+ <td width="150" valign="TOP">
+  <h3>Sensorstatus</h3> <br></td>
+ <td width="150" valign="TOP">
+	 <h3>Einschaltdauer</h3></td>
+ <td width="150" valign="TOP">
+	 <h3>Messwert LPG</h3></td>
+ <td width="200" valign="TOP">
+	 <h3>Messwert CO</h3></td>
+ <td width="200" valign="TOP">
+	 <h3>Messwert Rauch</h3></td>
+ <td width="200" valign="TOP">
+	 <h3>Messwert AD Wandler</h3></td>
+ <td width="200" valign="TOP">
+	 </td>
+ </tr>
+ <tr>
+ <form method="post" action="/POST">
+ <td valign="TOP">
+	 %s</td>
+ <td valign="TOP">
+	 %u s</td>
+ <td valign="TOP">
+	 %f ppm</td>
+ <td valign="TOP">
+	 %f ppm</td>
+ <td valign="TOP">
+	 %f ppm</td>
+ <td valign="TOP">
+	 %d</td>
+ <td valign="TOP">
+	 <input type="hidden" name="AS_OnOff" value="all"><input value="Ein/Aus" type="submit"></td>
+ </tr></form>
 </tbody></table>
 <hr>
 <datalist id="SensorStates">
-  <option value="1">Aktiv</option>
-  <option value="0">nicht konfiguriert</option>
-  <option value="2">nicht verbunden</option>
+ <option value="1">Aktiv</option>
+ <option value="0">nicht konfiguriert</option>
+ <option value="2">nicht verbunden</option>
 </datalist>
 <h2>Temperatursensoren</h2><br />
 <form method="post" action="/POST">
 <input type="hidden" name="SSearch" value="all"><input value="Sensorsuche" type="submit">
 </form>
 <TABLE> <!-- 'border="1"-->
-  <TR>
-    <TD WIDTH="200" VALIGN="TOP">
-      <h3>Sensoradresse</h3> <br /></TD>
-    <TD WIDTH="150" VALIGN="TOP">
-	  <h3>Temperatur</h3></TD>
-    <TD WIDTH="150" VALIGN="TOP">
-	  <h3>Sensorname</h3></TD>
-    <TD WIDTH="120" VALIGN="TOP">
-	  <h3>Offset in °K</h3></TD>
-    <TD WIDTH="80" VALIGN="TOP">
-	  <h3>Aktiv</h3></TD>
-    <TD WIDTH="200" VALIGN="TOP">
-	  </TD>
-  </TR>
+ <TR>
+ <TD WIDTH="200" VALIGN="TOP">
+  <h3>Sensoradresse</h3> <br /></TD>
+ <TD WIDTH="150" VALIGN="TOP">
+	 <h3>Temperatur</h3></TD>
+ <TD WIDTH="150" VALIGN="TOP">
+	 <h3>Sensorname</h3></TD>
+ <TD WIDTH="120" VALIGN="TOP">
+	 <h3>Offset in °K</h3></TD>
+ <TD WIDTH="80" VALIGN="TOP">
+	 <h3>Aktiv</h3></TD>
+ <TD WIDTH="200" VALIGN="TOP">
+	 </TD>
+ </TR>
 )rawliteral";
 
 const char html_SEconfig2[] PROGMEM = R"rawliteral(
-  %s
-  <TR>
-  <form method="post" action="/POST">
-    <TD VALIGN="TOP">
-	  %s</TD>
-    <TD VALIGN="TOP">
-	  %0.2f °C</TD>
-    <TD VALIGN="TOP">
-	  <input name="PS_%d_1_%llu" type="text" maxlength="14" size="15" value="%s" required="1"><br /><br /></TD>
-    <TD VALIGN="TOP">
-	  <input name="PS_%d_2_%llu" type="number" min="-5" max="+5" step="0.01" maxlength="4" size="5" value="%0.1f" required="1"><br /><br /></TD>
-    <TD VALIGN="TOP">
-	  <input name="PS_%d_3_%llu" type="number" min="0" max="2" step="1" size="5" value="%u" list="SensorStates" required="1"><br /><br /></TD>
-    <TD VALIGN="TOP">
-	  <input type="reset"><input value="Submit" type="submit"></TD>
-  </form>
-  </TR>
+ %s
+ <TR>
+ <form method="post" action="/POST">
+ <TD VALIGN="TOP">
+	 %s</TD>
+ <TD VALIGN="TOP">
+	 %0.2f °C</TD>
+ <TD VALIGN="TOP">
+	 <input name="PS_%d_1_%llu" type="text" maxlength="14" size="15" value="%s" required="1"><br /><br /></TD>
+ <TD VALIGN="TOP">
+	 <input name="PS_%d_2_%llu" type="number" min="-5" max="+5" step="0.01" maxlength="4" size="5" value="%0.1f" required="1"><br /><br /></TD>
+ <TD VALIGN="TOP">
+	 <input name="PS_%d_3_%llu" type="number" min="0" max="2" step="1" size="5" value="%u" list="SensorStates" required="1"><br /><br /></TD>
+ <TD VALIGN="TOP">
+	 <input type="reset"><input value="Submit" type="submit"></TD>
+ </form>
+ </TR>
 )rawliteral";
 const char html_SEconfig3[] PROGMEM = R"rawliteral(
 %s
@@ -127,35 +127,35 @@ const char html_SEconfig3[] PROGMEM = R"rawliteral(
 <hr>
 <h2>Fehlende Temperatursensoren</h2><br />
 <TABLE> <!-- 'border="1"-->
-  <TR>
-    <TD WIDTH="200" VALIGN="TOP">
-      <h3>Sensoradresse</h3> <br /></TD>
-    <TD WIDTH="150" VALIGN="TOP">
-	  <h3>Sensorname</h3></TD>
-    <TD WIDTH="120" VALIGN="TOP">
-	  <h3>Offset in °K</h3></TD>
-    <TD WIDTH="80" VALIGN="TOP">
-	  <h3>Aktiv</h3></TD>
-    <TD WIDTH="200" VALIGN="TOP">
-	  </TD>
-  </TR>
+ <TR>
+ <TD WIDTH="200" VALIGN="TOP">
+ <h3>Sensoradresse</h3> <br /></TD>
+ <TD WIDTH="150" VALIGN="TOP">
+	 <h3>Sensorname</h3></TD>
+ <TD WIDTH="120" VALIGN="TOP">
+	 <h3>Offset in °K</h3></TD>
+ <TD WIDTH="80" VALIGN="TOP">
+	 <h3>Aktiv</h3></TD>
+ <TD WIDTH="200" VALIGN="TOP">
+	 </TD>
+ </TR>
 )rawliteral";
 const char html_SEconfig4[] PROGMEM = R"rawliteral(
-  %s
-  <TR>
-  <form method="post" action="/POST">
-    <TD VALIGN="TOP">
-	  %s</TD>
-    <TD VALIGN="TOP">
-	  %s</TD>
-    <TD VALIGN="TOP">
-	  %0.1f</TD>
-    <TD VALIGN="TOP">
-	  %u</TD>
-    <TD VALIGN="TOP">
-	  <input type="hidden" name="SDelete" value="%llu"><input value="Delete" type="submit"></TD>
-  </form>
-  </TR>
+ %s
+ <TR>
+ <form method="post" action="/POST">
+ <TD VALIGN="TOP">
+	 %s</TD>
+ <TD VALIGN="TOP">
+	 %s</TD>
+ <TD VALIGN="TOP">
+	 %0.1f</TD>
+ <TD VALIGN="TOP">
+	 %u</TD>
+ <TD VALIGN="TOP">
+	 <input type="hidden" name="SDelete" value="%llu"><input value="Delete" type="submit"></TD>
+ </form>
+ </TR>
 )rawliteral";
 const char html_OPSEfooter[] PROGMEM = R"rawliteral(
 %s

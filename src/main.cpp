@@ -24,7 +24,7 @@
 //Port extension
 #include <Adafruit_MCP23X17.h>
 
-#define BGTDEBUG 0
+//#define BGTDEBUG 0
 
 
 //Funktionsdefinitionen
@@ -66,7 +66,7 @@ unsigned long Break_h = 0;
 unsigned long Break_10s = 0;
 unsigned long Break_s = 0;
 //Erstellen Serverelement
-AsyncWebServer server(80);
+AsyncWebServer server(8080);
 //Uhrzeit Variablen
 UDP * ntpUDP = 0;
 NTPClient * timeClient = 0;
@@ -74,7 +74,8 @@ NTPClient * timeClient = 0;
 EthernetClient * e_client = 0;
 WiFiClient * wifiClient;
 PubSubClient * MQTTclient = 0;
-String SubscribeRoot[2] = {"/setOutput/", "/General/"};
+String SubscribeRoot[3] = {"/setOutput/", "/General/", "/setOutputPWM/"}; //{"/setOutput/", "/General/", "/setOutputPWM/"}
+String SendRoot[5] = {"PWM_Input/", "hwInput/", "OutputPWMValue/", "OutputPWMValue/", "OutputPWMValue/"}; //{"PWM_Input/", "hwInput/", "OutputPWMValue/", "OutputPWMValue/", "OutputPWMValue/"}
 //Temperature sensors
 const uint8 MaxSensors = 15; 
 TSensorArray SensorPort1(9);
@@ -232,9 +233,9 @@ void loop(void) {
   }
   if(Output_Values.PWM_Manu_activ)
   {
-    updateOutputPWM(mcp, &Output_Values);
+    updateOutputPWM(mcp, &Output_Values, MCPState);
   }
-  if(readDigitalInputs_SetOutputIfAutoSSRMode(digitalRead(INTPortA), &Inputs, mcp, &Output_Values))
+  if(readDigitalInputs_SetOutputIfAutoSSRMode(digitalRead(INTPortA), &Inputs, mcp, &Output_Values, MCPState))
   {
     MQTT_SendInputStates();
   }
@@ -266,19 +267,27 @@ bool MQTTinit()
     #ifdef BGTDEBUG
       Serial.println("MQTTclient connected");
     #endif
-    String SubscribeRootTemp = varConfig.MQTT_rootpath;
+    String SubscribeRootTemp_setOutput = varConfig.MQTT_rootpath;
+    String SubscribeRootTemp_setPWMVal = varConfig.MQTT_rootpath;
     String SubscribeTemp = "";
-    SubscribeRootTemp += SubscribeRoot[0];
+    String SendPathTemp;
+    SubscribeRootTemp_setOutput += SubscribeRoot[0];
+    SubscribeRootTemp_setPWMVal += SubscribeRoot[2];
     for(int i = 0; i < 8; i++)
     {
-      SubscribeTemp = SubscribeRootTemp + OutputsBasicSettings[i].Name;
+      SubscribeTemp = SubscribeRootTemp_setOutput + OutputsBasicSettings[i].Name;
       MQTTclient->subscribe(SubscribeTemp.c_str());
+      SubscribeTemp = SubscribeRootTemp_setPWMVal + OutputsBasicSettings[i].Name;
+      MQTTclient->subscribe(SubscribeTemp.c_str());
+      SendPathTemp = SendRoot[2];
+      SendPathTemp += OutputsBasicSettings[i].Name;
+      MQTT_sendMessage(SendPathTemp.c_str(), Output_Values.PWM_Value[i]);
     }
-    SubscribeRootTemp = varConfig.MQTT_rootpath;
-    SubscribeRootTemp += SubscribeRoot[1];
-    SubscribeTemp = SubscribeRootTemp + "WLAN_active";
+    SubscribeRootTemp_setOutput = varConfig.MQTT_rootpath;
+    SubscribeRootTemp_setOutput += SubscribeRoot[1];
+    SubscribeTemp = SubscribeRootTemp_setOutput + "WLAN_active";
     MQTTclient->subscribe(SubscribeTemp.c_str());
-    SubscribeTemp = SubscribeRootTemp + "AirSens_active";
+    SubscribeTemp = SubscribeRootTemp_setOutput + "AirSens_active";
     MQTTclient->subscribe(SubscribeTemp.c_str());
     return true;
   }
@@ -309,7 +318,7 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
   
   if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + SubscribeRoot[0].length()))==SubscribeRoot[0])
   {
-    int OutputIndex = FindOutputName(topic), ValueTemp = 0;
+    int OutputIndex = FindOutputName(&topic[strlen(varConfig.MQTT_rootpath) + SubscribeRoot[0].length()]), ValueTemp = 0;
     if(OutputIndex < 0)
     { 
       String TempText = topic, TempPath = "Fehler";
@@ -319,7 +328,7 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
       return;
     }
     ValueTemp = Value.toInt();
-    SetOutput(OutputIndex, ValueTemp, &Output_Values, mcp);
+    SetOutput(OutputIndex, ValueTemp, &Output_Values, mcp, MCPState);
     if(ValueTemp!=3)
       Output_Values.OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
     if(ValueTemp==3)
@@ -347,35 +356,56 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
     {
       AirSensValues->setSensorState(Value.toInt());
     }
+    else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + SubscribeRoot[2].length()))==SubscribeRoot[2])
+    {
+      int OutputIndex = FindOutputName(&topic[strlen(varConfig.MQTT_rootpath) + SubscribeRoot[2].length()]), ValueTemp = 0;
+      if(OutputIndex < 0)
+      { 
+        String TempText = topic, TempPath = "Fehler";
+        TempText += " -> ";
+        TempText += (char) payload[0];
+        MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
+        return;
+      }
+      ValueTemp = Value.toInt();
+      MQTT_sendMessage("Test", ValueTemp);
+      MQTT_sendMessage("Test2", (uint8 *) TempTopic.c_str(), TempTopic.length());
+      if((ValueTemp >= Output_Values.PWM_Min)&&(ValueTemp <= Output_Values.PWM_Max))
+      {
+        Output_Values.PWM_Value[OutputIndex] = (uint8) ValueTemp;
+        TempTopic = SendRoot[2];
+        TempTopic += OutputsBasicSettings[OutputIndex].Name;
+        MQTT_sendMessage(TempTopic.c_str(), ValueTemp);
+      }
+    }
   }
 }
 int FindOutputName(const char* Topic)
 {
-  int pos = strlen(varConfig.MQTT_rootpath) + SubscribeRoot[0].length();
   for(int i = 0; i < 8; i++)
   {
-    if(!strcmp(&Topic[pos], OutputsBasicSettings[i].Name))
+    if(!strcmp(Topic, OutputsBasicSettings[i].Name))
       return i;
   }
   return -1;
 }
 void MQTT_SendInputStates()
 {
-  String Temp = "ratio_";
-  MQTT_sendMessage("hwInput/InputPort", (uint8) ~Inputs.StatesHW);
+  String Temp = SendRoot[1] + "InputPort";
+  MQTT_sendMessage(Temp.c_str(), (uint8) ~Inputs.StatesHW);
   for(int i = 0; i<8; i++)
   {
-    Temp = "ratio/";
+    Temp = SendRoot[0];
     Temp += OutputsBasicSettings[i].Name;
     MQTT_sendMessage(Temp.c_str(), Inputs.OnTimeRatio[i]);
-    Temp.replace("ratio", "hwInput");
+    Temp.replace(SendRoot[0], SendRoot[1]);
     MQTT_sendMessage(Temp.c_str(), Inputs.StatesHW&1<<i?0:1);
   }
 }
 bool MQTT_sendMessage(const char * ValueName, const uint8* MSG, uint8 len)
 {
   int lenPath = strlen(varConfig.MQTT_rootpath);
-  char strPathVar[lenPath+20];
+  char strPathVar[lenPath+30];
 
   sprintf(strPathVar, "%s/%s", varConfig.MQTT_rootpath, ValueName);
   return MQTTclient->publish(strPathVar, MSG, len, true);
@@ -640,7 +670,7 @@ void WebserverSensors(AsyncWebServerRequest *request)
   int countSensors = SensorPort1.GetSensorCount() + SensorPort2.GetSensorCount();
   TempSensor * MissingSensors[MaxSensors];
   uint8 countMissingSensors = FindMissingSensors(&SensorPort1, &SensorPort2, MissingSensors, TempSensors, MaxSensors);
-  uint16 StringLen = (strlen(html_header) + 50)+strlen(html_SEconfig1)+(countSensors * (strlen(html_SEconfig2) + 100))+strlen(html_SEconfig3);
+  uint16 StringLen = (strlen(html_header) + 50)+strlen(html_SEconfig1)+(countSensors * (strlen(html_SEconfig2) + 120))+strlen(html_SEconfig3);
   StringLen += ((strlen(html_SEconfig4)+100)*countMissingSensors) + strlen(html_OPSEfooter);
   char *HTMLString = new char[StringLen];
   char *HTMLString2 = new char[StringLen];
@@ -657,16 +687,16 @@ void WebserverSensors(AsyncWebServerRequest *request)
   {
     sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort1.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort1.GetSensorIndex(i)->getTempC(), 1, 
                   SensorPort1.GetSensorIndex(i)->getAddressUINT64(), SensorPort1.GetSensorIndex(i)->getName().c_str(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), 
-                  SensorPort1.GetSensorIndex(i)->getOffset(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), FindTempSensor(TempSensors, MaxSensors, 
-                  SensorPort1.GetSensorIndex(i)->getAddressUINT64())->SensorState);
+                  SensorPort1.GetSensorIndex(i)->getOffset(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), 
+                  FindTempSensor(TempSensors, MaxSensors, SensorPort1.GetSensorIndex(i)->getAddressUINT64())->SensorState);
     strcpy(HTMLString2, HTMLString);
   }
-  for(int i = 0; i < SensorPort2.GetSensorCount(); i++)
+  for(int i = 0; i < (SensorPort2.GetSensorCount()); i++)
   {
     sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort2.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort2.GetSensorIndex(i)->getTempC(), 2, 
                   SensorPort2.GetSensorIndex(i)->getAddressUINT64(), SensorPort2.GetSensorIndex(i)->getName().c_str(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 
-                  SensorPort2.GetSensorIndex(i)->getOffset(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(), FindTempSensor(TempSensors, MaxSensors, 
-                  SensorPort2.GetSensorIndex(i)->getAddressUINT64())->SensorState);
+                  SensorPort2.GetSensorIndex(i)->getOffset(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(),
+                  FindTempSensor(TempSensors, MaxSensors, SensorPort2.GetSensorIndex(i)->getAddressUINT64())->SensorState);
     strcpy(HTMLString2, HTMLString);
   }
   sprintf(HTMLString, html_SEconfig3, HTMLString2);
@@ -677,7 +707,10 @@ void WebserverSensors(AsyncWebServerRequest *request)
     strcpy(HTMLString, HTMLString2);  
   }
   sprintf(HTMLString2, html_OPSEfooter, HTMLString);
-  request->send(200, "text/html", HTMLString2);
+  AsyncBasicResponse *response = new AsyncBasicResponse(200, "text/html", HTMLString2);
+  request->send(response);
+
+//  request->send(200, "text/html", HTMLString2); //at big sites >6400 characters not functional
   delete[] HTMLString;
   delete[] HTMLString2;
 }
@@ -700,6 +733,7 @@ void WebserverOutput(AsyncWebServerRequest *request)
     TempCurrentOutputState = (~Output_Values.Outputstates &((uint16) 1<<(i+8)))/((uint16)1<<(i+8)); //Manuel On or Off
     TempCurrentOutputState = (Output_Values.Outputstates &((uint16) 1<<i))?2:TempCurrentOutputState; //Auto or Manuell
     TempCurrentOutputState = Output_Values.OutputstatesAutoSSRelais&((uint8) 1<<i)?3:TempCurrentOutputState; //Auto over Solid state relais
+    TempCurrentOutputState = Output_Values.PWM_Manu_activ&((uint8) 1<<i)?4:TempCurrentOutputState; //Manu PWM-Mode
     sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, OutputsBasicSettings[i].Name, TempCurrentOutputState, Inputs.OnTimeRatio[i], i, OutputsBasicSettings[i].StartValue, i, 
                   Un_Checked[OutputsBasicSettings[i].MQTTState%2].c_str());
     strcpy(HTMLString2, HTMLString);
