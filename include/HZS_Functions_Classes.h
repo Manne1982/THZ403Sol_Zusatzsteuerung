@@ -51,6 +51,7 @@ struct digital_Output_current_Values{
   uint8 PWM_Min = 25;
   uint8 PWM_Max = 230;
   uint8 PWM_CurrentState = 0;
+  uint8 realValue = 0;
 };
 
 struct TempSensor{
@@ -87,6 +88,7 @@ struct digital_Input{
   unsigned long TimeStartpoints[8][2] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  //Starttime High and StartTime Low for calculate the percentage On-Time (Port A)
   uint8 OnTimeRatio[8] = {0, 0, 0, 0, 0, 0, 0, 0};   //Ratio Value of On-Time (max 10 s time slot otherwise 255 or 0)
   uint8 ReadStep[8] = {0, 0, 0, 0, 0, 0, 0, 0}; //Value for save the step of Input reading 0= Reading not started, 1= On-time Start point fixed, 2 = Off-time Start point fixed, 3= Value safed 
+  unsigned long lastReading = 0;
 };
 
 //Input Output functions
@@ -98,12 +100,14 @@ void TakeoverTSConfig(TSensorArray * TSensArray, TempSensor * TSArray, uint8 Arr
 uint8 FindMissingSensors(TSensorArray * TSensArray1, TSensorArray * TSensArray2, TempSensor * *TSArrayMissing, TempSensor * TSArray, uint8 ArrayLen); //Function to find missing Sesnors into the config array, return value is the count of missing Sensors
 int MCPSetup(Adafruit_MCP23X17 * MCP, int MCPAddress);
 uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates);
-uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates, uint16 * AutoOverSSRelais); //MCPStates: 0= Not initiated, 1= connected, 2 = error
+void InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates, digital_Output_current_Values * Output_Values); //MCPStates: 0= Not initiated, 1= connected, 2 = error
+//uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates, uint16 * AutoOverSSRelais); //MCPStates: 0= Not initiated, 1= connected, 2 = error
 void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Output, Adafruit_MCP23X17 * _MCP, int * MCPStates);
 bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _Inputs, Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output, int * MCPStates);
 void updateOutputPWM(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output, int * MCPStates);
 void setRelaisManuAuto(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 Manu, int * MCPStates);
 void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * MCPStates);
+uint8 getRealOutput(digital_Output_current_Values * _Output_Values, digital_Input * _Inputs);
 
 
 //General functions

@@ -29,6 +29,10 @@ Value (0 - 1)
 0 = switch off WLAN only possible if Ethernet port active
 1 = switch on WLAN
 
+Root_Path/setGeneral/ESP_Restart
+Value (1)
+1 = restart the ESP
+
 Root_Path/setGeneral/AirSens_active
 Value (0 - 1)
 0 = switch off the gas quality sensor

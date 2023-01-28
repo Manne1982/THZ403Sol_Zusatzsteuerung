@@ -25,7 +25,7 @@ const char html_header[] PROGMEM = R"rawliteral(
  <meta name="viewport" content="width=device-width, initial-scale=1", charset="UTF-8">
 </head>
 <body bgcolor=\"#BBFFFF\">
-Uhrzeit: %s | Datum: %s, %02d.%02d.%d | Status: 
+Uhrzeit: %s | Datum: %s, %02d.%02d.%d | Status: %u, %X
 <br />
 <hr><h3>
 <a href=\>Startseite</a> | 

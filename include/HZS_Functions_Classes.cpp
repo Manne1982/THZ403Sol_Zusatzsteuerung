@@ -195,10 +195,14 @@ uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates)
 {
   MCPStates[MCPOutput] = MCPSetup(&MCP[MCPOutput], MCPPort0);
   MCPStates[MCPInput] = MCPSetup(&MCP[MCPInput], MCPPort1);
-  MCP[MCPOutput].writeGPIOAB(0xFFFF); //Set all outputs on High to put off the relaises
+  MCP[MCPOutput].writeGPIOAB(0x00FF); //Set all outputs on High to put off the relaises
   for(int i =0; i <16; i++)
   {
-    MCP[MCPOutput].pinMode(i, OUTPUT);
+    if(i<8)
+      MCP[MCPOutput].pinMode(i, OUTPUT);
+    else
+      MCP[MCPOutput].pinMode(i, INPUT); //Use external Pullup
+
     MCP[MCPInput].pinMode(i, INPUT_PULLUP);
     MCP[MCPInput].setupInterruptPin(i, CHANGE);
   }
@@ -209,16 +213,17 @@ uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates)
   else
     return 0;
 }
-uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates, uint16 * AutoOverSSRelais)
+void InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates, digital_Output_current_Values * _Output_Values)
 {
-  uint8 Manu_Auto = 0xFF; //all outputs Auto = 0xFF; all outputs Manu = 0x00
-  uint8 Manu_ONOFF = 0xFF;  //all outputs Off (Manu) = 0xFF; all outputs On (Manu) = 0x00
-  uint16 OutputConfig = 0;
+//  uint8 Manu_Auto = 0xFF; //all outputs Auto = 0xFF; all outputs Manu = 0x00
+//  uint8 Manu_ONOFF = 0xFF;  //all outputs Off (Manu) = 0xFF; all outputs On (Manu) = 0x00
+//  uint16 OutputConfig = 0;
   if(MCPStates[MCPOutput] == 1)
   {
     for(int i = 0; i < 8; i++)
     {
-      switch(Config[i].StartValue)
+      SetOutput(i, Config[i].StartValue, _Output_Values, MCP, MCPStates);
+/*      switch(Config[i].StartValue)
       {
         case 1:
           MCP[MCPOutput].pinMode(i+8, OUTPUT); //Switch SSRelais ON in Manu-Mode
@@ -238,13 +243,13 @@ uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * 
             Serial.println("Wrong StartValue for Output Config");
           #endif
           break;
-      }
+      }*/
     }
-    OutputConfig = Manu_ONOFF << 8;
-    OutputConfig |= Manu_Auto;
-    return OutputConfig;
+//    OutputConfig = Manu_ONOFF << 8;
+//    OutputConfig |= Manu_Auto;
+//    return OutputConfig;
   }
-  return 0xFFFF; //Return all ports Auto
+//  return 0xFFFF; //Return all ports Auto
 }
 void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Output, Adafruit_MCP23X17 * _MCP, int * MCPStates)
 {
@@ -259,6 +264,7 @@ void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Outp
       setSSR(_MCP, OutputIndex, 1, MCPStates);
       _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex)+((uint16) 1<<(OutputIndex+8)));
       _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
       break;
     case 0:
       setRelaisManuAuto(_MCP, OutputIndex, 1, MCPStates);
@@ -266,13 +272,21 @@ void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Outp
       _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex));
       _Output->Outputstates |= (uint16)((uint16)1<<(OutputIndex+8));
       _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
       break;
     case 2:
+      setRelaisManuAuto(_MCP, OutputIndex, 0, MCPStates);
+      setSSR(_MCP, OutputIndex, 0, MCPStates);
+      _Output->Outputstates |= (uint16)(((uint16)1<<OutputIndex)+((uint16)1<<(OutputIndex+8)));
+      _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      break;
     case 3:
       setRelaisManuAuto(_MCP, OutputIndex, 0, MCPStates);
       setSSR(_MCP, OutputIndex, 0, MCPStates);
       _Output->Outputstates |= (uint16)(((uint16)1<<OutputIndex)+((uint16)1<<(OutputIndex+8)));
       _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais |= (1<<OutputIndex);
       break;
     case 4: //Manuel PWM mode, only configurable over MQTT
       setRelaisManuAuto(_MCP, OutputIndex, 1, MCPStates);
@@ -280,6 +294,7 @@ void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Outp
       _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex));
       _Output->Outputstates |= (uint16)((uint16)1<<(OutputIndex+8));
       _Output->PWM_Manu_activ |= (1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
       break;
     default:
       #ifdef BGTDEBUG
@@ -296,10 +311,11 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _In
   if((MCPStates[MCPOutput] != 1)||(MCPStates[MCPInput] != 1))
     return false;
 
+  unsigned long currentTime = millis();
   if(!Interrupt) //is there any change of digital inputs
   {
-    unsigned long currentTime = millis();
     _Inputs->StatesHW = _MCP[MCPInput].readGPIOA();
+    _Inputs->lastReading = millis();
     for (int i = 0; i < 8; i++)
     {
       switch(_Inputs->ReadStep[i])
@@ -342,16 +358,21 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _In
         default:
           break;
       }
-      if(_Inputs->OnTimeRatio[i] && (_Output->OutputstatesAutoSSRelais & (1<<i))&&((InputOldValue&(1<<i))!=(_Inputs->StatesHW&(1<<i))))
+      if(_Inputs->OnTimeRatio[i] && (_Output->OutputstatesAutoSSRelais & (1<<(7-i)))&&((InputOldValue&(1<<i))!=(_Inputs->StatesHW&(1<<i))))
       {
-        SetOutput(i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), _Output, _MCP, MCPStates);
+        SetOutput(7-i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), _Output, _MCP, MCPStates);
       }
     }
     anyChange = true;
   }
   else
   {
-    unsigned long currentTime = millis();
+    if(_Inputs->lastReading > (currentTime + 10000))
+    {
+      _Inputs->StatesHW = _MCP[MCPInput].readGPIOA();
+      _Inputs->lastReading = millis();
+      anyChange = InputOldValue != _Inputs->StatesHW;
+    }
     for (int i = 0; i < 8; i++)
     {
       if((_Inputs->ReadStep[i] == 3) || (_Inputs->ReadStep[i] == 4))
@@ -372,9 +393,9 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _In
         _Inputs->TimeStartpoints[i][1] = 0;
         anyChange = true;
       }
-      if((_Inputs->OnTimeRatio[i]==0)&&(_Output->OutputstatesAutoSSRelais & (1<<i))&&((~_Output->Outputstates) & (uint16)(1<<i))) //if Input ratio on 0 switch off the relais for Manu mode to save energy
+      if((_Inputs->OnTimeRatio[i]==0)&&(_Output->OutputstatesAutoSSRelais & (1<<(7-i)))&&((~_Output->Outputstates) & (uint16)(1<<(7-i)))) //if Input ratio on 0 switch off the relais for Manu mode to save energy
       {
-        SetOutput(i, 3, _Output, _MCP, MCPStates);
+        SetOutput((7-i), 3, _Output, _MCP, MCPStates);
       }
     }
   }
@@ -387,9 +408,9 @@ void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * MCP
   if(OutputIndex>7)
     return;
   if(On_Off)
-    _MCP[MCPOutput].pinMode(OutputIndex + 8, OUTPUT); //Switch on the SSR (Solid State Relais)
+    _MCP[MCPOutput].pinMode(OutputIndex + 8, OUTPUT); //Switch off the SSR (Solid State Relais)
   else
-    _MCP[MCPOutput].pinMode(OutputIndex + 8, OUTPUT); //Switch on the SSR (Solid State Relais)
+    _MCP[MCPOutput].pinMode(OutputIndex + 8, INPUT); //Switch on the SSR (Solid State Relais)
 }
 void setRelaisManuAuto(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 Manu, int * MCPStates)
 {
@@ -428,6 +449,29 @@ void updateOutputPWM(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _O
       }
     }
   }
+}
+uint8 getRealOutput(digital_Output_current_Values * _Output_Values, digital_Input * _Inputs)
+{ 
+  uint8 returnValue = 0;
+  for(int i = 0; i < 8; i++)
+  {
+    if(~_Output_Values->Outputstates & (1<<i))
+    {
+      if(~_Output_Values->Outputstates & (1<<(i+8)))
+      {
+        returnValue |= (1<<i);
+      }
+    }
+    else
+    {
+      if(~_Inputs->StatesHW & (1<<(7-i)))
+      {
+        returnValue |= (1<<i);
+      }
+    }
+  }
+  _Output_Values->realValue = returnValue;
+  return returnValue;
 }
 //---------------------------------------------------------------------
 uint64 StrToLongInt(String Input)

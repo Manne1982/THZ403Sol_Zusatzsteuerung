@@ -75,7 +75,7 @@ EthernetClient * e_client = 0;
 WiFiClient * wifiClient;
 PubSubClient * MQTTclient = 0;
 String MQTTSubscribeRoot[3] = {"/setOutput/", "/setGeneral/", "/setOutputPWM/"}; //{"/setOutput/", "/General/", "/setOutputPWM/"}
-String MQTTSendRoot[6] = {"Input_PWM_Value/", "Input_direct/", "Output_PWM_Value/", "General_Information/", "TempSensors/", "AirQuality/"}; //{"Input_PWM_Value/", "Input_direct/", "Output_PWM_Value/", "General_Information/", "TempSensors/", "AirQuality/"}
+String MQTTSendRoot[7] = {"Input_PWM_Value/", "Input_direct/", "Output_PWM_Value/", "General_Information/", "TempSensors/", "AirQuality/"}; //{"Input_PWM_Value/", "Input_direct/", "Output_PWM_Value/", "General_Information/", "TempSensors/", "AirQuality/"}
 //Temperature sensors
 const uint8 MaxSensors = 15; 
 TSensorArray SensorPort1(9);
@@ -148,8 +148,11 @@ void setup(void) {
   //Output config
   //Port Extension
   Inputs.StatesHW = MCPinit(mcp, MCPState);
+  //Output_Values.Outputstates = InitOutputStates(mcp, OutputsBasicSettings, MCPState, &Output_Values.OutputstatesAutoSSRelais); 
+  InitOutputStates(mcp, OutputsBasicSettings, MCPState, &Output_Values); 
+  MQTT_sendMessage((MQTTSendRoot[3]+"realOutput").c_str(), Output_Values.realValue);
+
   MQTT_SendInputStates();
-  Output_Values.Outputstates = InitOutputStates(mcp, OutputsBasicSettings, MCPState, &Output_Values.OutputstatesAutoSSRelais); 
 
   //AirSens init
   AirSensValues = new AirQualitySensor(AirSensOnOff, AirSensAnalogPort);
@@ -195,6 +198,9 @@ void loop(void) {
   if(millis()>Break_s)
   {
     Break_s = millis() + 1000;
+    uint8 oldRealValue = Output_Values.realValue;
+    if(oldRealValue != getRealOutput(&Output_Values, &Inputs))
+      MQTT_sendMessage((MQTTSendRoot[3]+"realOutput").c_str(), Output_Values.realValue);
   }
   if (Break_h < millis())
   {
@@ -289,6 +295,8 @@ bool MQTTinit()
     MQTTclient->subscribe(SubscribeTemp.c_str());
     SubscribeTemp = SubscribeRootTemp_setOutput + "AirSens_active";
     MQTTclient->subscribe(SubscribeTemp.c_str());
+    SubscribeTemp = SubscribeRootTemp_setOutput + "ESP_Restart";
+    MQTTclient->subscribe(SubscribeTemp.c_str());
     return true;
   }
   else
@@ -318,7 +326,7 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
   
   if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[0].length()))==MQTTSubscribeRoot[0])
   {
-    int OutputIndex = FindOutputName(&topic[strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[0].length()]), ValueTemp = 0;
+    int OutputIndex = FindOutputName(&topic[strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[0].length()]);
     if(OutputIndex < 0)
     { 
       String TempText = topic, TempPath = "Fehler";
@@ -327,12 +335,7 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
       MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
       return;
     }
-    ValueTemp = Value.toInt();
-    SetOutput(OutputIndex, ValueTemp, &Output_Values, mcp, MCPState);
-    if(ValueTemp!=3)
-      Output_Values.OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
-    if(ValueTemp==3)
-      Output_Values.OutputstatesAutoSSRelais |= (1<<OutputIndex);
+    SetOutput(OutputIndex, Value.toInt(), &Output_Values, mcp, MCPState);
   }
   else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[1].length()))==MQTTSubscribeRoot[1])
   {
@@ -355,6 +358,10 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
     else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[1].length())=="AirSens_active")
     {
       AirSensValues->setSensorState(Value.toInt());
+    }
+    else if((TempTopic.substring(strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[1].length())=="ESP_Restart")&&(Value.toInt() == 1))
+    {
+      ESP_Restart = 1;
     }
   }  
   else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[2].length()))==MQTTSubscribeRoot[2])
@@ -394,7 +401,7 @@ void MQTT_SendInputStates()
   for(int i = 0; i<8; i++)
   {
     Temp = MQTTSendRoot[0];
-    Temp += OutputsBasicSettings[i].Name;
+    Temp += OutputsBasicSettings[7-i].Name;
     MQTT_sendMessage(Temp.c_str(), Inputs.OnTimeRatio[i]);
     Temp.replace(MQTTSendRoot[0], MQTTSendRoot[1]);
     MQTT_sendMessage(Temp.c_str(), Inputs.StatesHW&1<<i?0:1);
@@ -652,13 +659,17 @@ void WebserverRoot(AsyncWebServerRequest *request)
       pntSelected[i] = (char *)varSelected[1].c_str();
     else
       pntSelected[i] = (char *)varSelected[0].c_str();
-  sprintf(Header_neu, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear);
+  sprintf(Header_neu, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear, Output_Values.realValue, Output_Values.Outputstates);
   sprintf(Body_neu, html_NWconfig, Un_Checked[varConfig.NW_Flags & NW_WiFi_AP].c_str(), varConfig.WLAN_SSID, 
               Un_Checked[(varConfig.NW_Flags & NW_EthernetActive)/NW_EthernetActive].c_str(), Un_Checked[(varConfig.NW_Flags & NW_StaticIP)/NW_StaticIP].c_str(), varConfig.NW_IPAddress, varConfig.NW_IPAddressEthernet, varConfig.NW_NetzName, varConfig.NW_SubMask, varConfig.NW_Gateway, varConfig.NW_DNS, 
               varConfig.NW_NTPServer, pntSelected[0], pntSelected[1], pntSelected[2], pntSelected[3], pntSelected[4], 
               Un_Checked[(varConfig.NW_Flags & NW_MQTTActive)/NW_MQTTActive].c_str(), varConfig.MQTT_Server, varConfig.MQTT_Port, varConfig.MQTT_Username, varConfig.MQTT_rootpath);
   sprintf(HTMLString, "%s%s", Header_neu, Body_neu);
-  request->send(200, "text/html", HTMLString);
+//  request->send(200, "text/html", HTMLString);
+
+  AsyncBasicResponse *response = new AsyncBasicResponse(200, "text/html", HTMLString);
+  request->send(response);
+
   delete[] HTMLString;
   delete[] Body_neu;
   delete[] Header_neu;
@@ -678,7 +689,7 @@ void WebserverSensors(AsyncWebServerRequest *request)
   int monthDay = ptm->tm_mday;
   int currentMonth = ptm->tm_mon + 1;
   int currentYear = ptm->tm_year + 1900;
-  sprintf(HTMLString, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear);
+  sprintf(HTMLString, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear, Output_Values.realValue, Output_Values.Outputstates);
   sprintf(HTMLString2, html_SEconfig1, HTMLString, Ein_Aus[AirSensValues->getSensorState()].c_str(), AirSensValues->getOnTime_s(), AirSensValues->readLPG(), AirSensValues->readCO(), 
                   AirSensValues->readSMOKE(), AirSensValues->getHWValue());
   for(int i = 0; i < SensorPort1.GetSensorCount(); i++)
@@ -724,7 +735,7 @@ void WebserverOutput(AsyncWebServerRequest *request)
   int currentMonth = ptm->tm_mon + 1;
   int currentYear = ptm->tm_year + 1900;
   int TempCurrentOutputState = 0;
-  sprintf(HTMLString, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear);
+  sprintf(HTMLString, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear, Output_Values.realValue, Output_Values.Outputstates);
   sprintf(HTMLString2, "%s%s", HTMLString, html_OPconfig1);
   for(int i = 0; i < 8; i++)
   {
@@ -732,7 +743,7 @@ void WebserverOutput(AsyncWebServerRequest *request)
     TempCurrentOutputState = (Output_Values.Outputstates &((uint16) 1<<i))?2:TempCurrentOutputState; //Auto or Manuell
     TempCurrentOutputState = Output_Values.OutputstatesAutoSSRelais&((uint8) 1<<i)?3:TempCurrentOutputState; //Auto over Solid state relais
     TempCurrentOutputState = Output_Values.PWM_Manu_activ&((uint8) 1<<i)?4:TempCurrentOutputState; //Manu PWM-Mode
-    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, OutputsBasicSettings[i].Name, TempCurrentOutputState, Inputs.OnTimeRatio[i], i, OutputsBasicSettings[i].StartValue, i, 
+    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, OutputsBasicSettings[i].Name, TempCurrentOutputState, Inputs.OnTimeRatio[7-i], i, OutputsBasicSettings[i].StartValue, i, 
                   Un_Checked[OutputsBasicSettings[i].MQTTState%2].c_str());
     strcpy(HTMLString2, HTMLString);
   }
