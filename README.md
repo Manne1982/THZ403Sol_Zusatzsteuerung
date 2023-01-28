@@ -59,5 +59,6 @@ Ratio of the manually PWM mode
 Root_Path/TempSensors/"Name of the Sensor"
 --> Value of the temperature in °C
 
-Root_Path/General_Information/
+Root_Path/General_Information/realOutput
+--> Outputs as 8bit unsigned integer with the real output of all 8 ports (includes the current state of both relais)
 
