@@ -47,7 +47,7 @@ struct digital_Output_current_Values{
   uint16 OutputstatesAutoSSRelais = 0x0000;  //Variable for the Auto over SSR-Settings
   uint8 PWM_Manu_activ = 0x00; 
   uint8 PWM_Value[8] = {25, 25, 25, 25, 25, 25, 25, 25};
-  uint16 PWM_CycleTime_ms = 5000;
+  uint16 PWM_CycleTime_ms = 10000;
   uint8 PWM_Min = 25;
   uint8 PWM_Max = 230;
   uint8 PWM_CurrentState = 0;
@@ -82,6 +82,27 @@ private:
   byte PortAnalogInput;
   MQ2 * AirSens;
 };
+
+class ThreeWayValve{
+public:
+  ThreeWayValve(uint8 _ChannelOpen, uint8 _ChannelClose);
+  ~ThreeWayValve();
+  void setChannelOpen(uint8 _Channel);
+  void setChannelClose(uint8 _Channel);
+  void setCycleTimeOpen(uint16 _Seconds);
+  void setCycleTimeClose(uint16 _Seconds);
+  uint16 getValvePosition();
+  void updateState(digital_Output_current_Values * _Outputs);
+private:
+  uint8 ChannelOpen;              //Channel for open the valve
+  uint8 ChannelClose;             //Channel for close the valve
+  uint16 CycleTimeOpen_s;         //Time for 
+  uint16 CycleTimeClose_s;        //Time for 
+  uint16 ValvePosition;           //10.000 = Open --> 0 = Closed
+  unsigned long OnTimeOpen_ms;    //millis() at put on the Open-Channel
+  unsigned long OnTimeClose_ms;   //millis() at put on the Open-Channel
+};
+
 
 struct digital_Input{
   uint8 StatesHW = 0;  //Variable for the current states of the Inputs MCP[1] Port A

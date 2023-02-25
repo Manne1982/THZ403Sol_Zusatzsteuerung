@@ -13,7 +13,7 @@ enum {NW_WiFi_AP = 0x01, NW_StaticIP = 0x02, NW_EthernetActive = 0x04, NW_MQTTAc
 const String Un_Checked[2]{"","Checked"};
 const String varSelected[2]{"", " selected=\"\""};
 // const String De_Aktiviert[2]{"Deaktiviert","Aktiviert"};
-const String Ein_Aus[2]{"Aus","Ein"};
+const String Ein_Aus[3]{"Aus","Ein","---"};
 
 
 
@@ -352,7 +352,7 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
   <TR>
     <TD valign="TOP">
       MQTT Server: </td>
-  <TD>
+    <TD>
       <input name="mqServer" type="text" minlength="7" maxlength="15" size="45" value="%s"><br><br></td>
     <TD valign="TOP">
        </td>
@@ -360,7 +360,7 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
   <TR>
     <td valign="TOP">
       MQTT Port: </td>
-  <TD>
+    <TD>
     <input name="mqPort" type="number" minlength="3" maxlength="5" size="8" value="%u" required="1" pattern="[0-9]{5}"> <br><br></td>
     <TD valign="TOP">
       </td>
@@ -368,7 +368,7 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
   <TR>
     <TD valign="TOP">
       Benutzername: </td>
-  <TD>  
+    <TD>  
     <input name="mqUser" type="text" minlength="6" maxlength="15" size="19" value="%s"><br><br></td>
     <TD valign="TOP">
        </td>
@@ -376,7 +376,7 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
   <TR>
     <TD valign="TOP">
       Passwort: </td>
-  <TD>
+    <TD>
     <input name="mqPassword" type="password" minlength="5" maxlength="60" size="35" value="xxxxxx"><br><br></td>
     <TD valign="TOP">
   </TR>
@@ -388,9 +388,15 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
     <TD valign="TOP">
   </TR>
   <TR>
+    <TD VALIGN="TOP">
+      MQTT secure On/Off: </TD>
+    <TD VALIGN="TOP">
+    <input name="mqMQTTsecureOn" value="" type="checkbox" %s> <br /><br /></TD>
+  </TR>
+  <TR>
     <TD valign="TOP">
       Zertifikat: </td>
-  <TD>
+    <TD>
     <input name="mqFPrint" type="password" minlength="8" maxlength="60" size="35" value="xxxxxx"><br><br></td>
     <TD valign="TOP">
   </TR>

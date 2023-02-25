@@ -24,7 +24,7 @@
 //Port extension
 #include <Adafruit_MCP23X17.h>
 
-//#define BGTDEBUG 0
+//#define BGTDEBUG 1
 
 
 //Funktionsdefinitionen
@@ -58,12 +58,12 @@ bool MQTT_sendMessage(const char * ValueName, float MSG);
 
 //Projektvariablen
 NWConfig varConfig;
-uint8 MQTT_NTP_over_Ethernet_activ = 0;
 char const EthernetMAC[] = "A0:A1:A2:A3:A4:A5";         //For Ethernet connection (MQTT)
 uint8 const mac[6] = {0xA0,0xA1,0xA2,0xA3,0xA4,0xA5}; //For Ethernet connection
 bool ESP_Restart = false;                         //Variable for a restart with delay in WWW Request
 unsigned long Break_h = 0;
 unsigned long Break_10s = 0;
+unsigned long Break_60s = 0;
 unsigned long Break_s = 0;
 //Erstellen Serverelement
 AsyncWebServer server(8080);
@@ -74,6 +74,7 @@ NTPClient * timeClient = 0;
 EthernetClient * e_client = 0;
 WiFiClient * wifiClient;
 PubSubClient * MQTTclient = 0;
+unsigned long lastMQTTInit = 0;
 String MQTTSubscribeRoot[3] = {"/setOutput/", "/setGeneral/", "/setOutputPWM/"}; //{"/setOutput/", "/General/", "/setOutputPWM/"}
 String MQTTSendRoot[7] = {"Input_PWM_Value/", "Input_direct/", "Output_PWM_Value/", "General_Information/", "TempSensors/", "AirQuality/"}; //{"Input_PWM_Value/", "Input_direct/", "Output_PWM_Value/", "General_Information/", "TempSensors/", "AirQuality/"}
 //Temperature sensors
@@ -89,7 +90,7 @@ int MCPState[2] = {0, 0}; //0 = not connected, 1 = connected, 2 = error
 digital_Output OutputsBasicSettings[8];  //Variable array for save Output Information.
 digital_Input Inputs;  //Variable to save current states and auxiliary variables of digital inputs
 digital_Output_current_Values Output_Values;
-
+ThreeWayValve * ValveHeating;
 
 void setup(void) {
   wifiClient = new WiFiClient;
@@ -107,6 +108,13 @@ void setup(void) {
   {    
     if(!EinstLaden()) //If failure then standard config will be saved
       EinstSpeichern();
+    else
+    {
+      #ifdef BGTDEBUG
+        Serial.println("Einstellung wurde erfolgreich geladen!");
+      #endif
+
+    }
   }
   else
   {
@@ -116,27 +124,40 @@ void setup(void) {
   TakeoverTSConfig(&SensorPort1, TempSensors, MaxSensors);
   TakeoverTSConfig(&SensorPort2, TempSensors, MaxSensors);
   EinstSpeichern();
+  #ifdef BGTDEBUG
+    Serial.println("Sensordaten übernommen!");
+  #endif
   NetworkInit(); //Initialization of WiFi, Ethernet and MQTT
+  #ifdef BGTDEBUG
+    Serial.println("Netzwerk initiiert");
+  #endif
   //Zeitserver Einstellungen
   if (strlen(varConfig.NW_NTPServer))
     timeClient = new NTPClient(*ntpUDP, (const char *)varConfig.NW_NTPServer);
   else
     timeClient = new NTPClient(*ntpUDP, "fritz.box");
+  #ifdef BGTDEBUG
+    Serial.println("NTP-Client erstellt");
+  #endif
   delay(1000);
   timeClient->begin();
   timeClient->setTimeOffset(varConfig.NW_NTPOffset * 3600);
+  #ifdef BGTDEBUG
+    Serial.println("NTP-Client initiiert");
+  #endif
   //OTA
   ArduinoOTA.setHostname("HeizungOTA");
   ArduinoOTA.setPassword("Heizung!123");
   ArduinoOTA.begin();
+  #ifdef BGTDEBUG
+    Serial.println("OTA gestartet");
+  #endif
   for(int i = 0; i<3; i++)
   {
     //OTA
     ArduinoOTA.handle();
     delay(1000);
   }
-  //MQTT
-  MQTTinit();
   //Webserver
   server.begin();
   server.onNotFound(notFound);
@@ -144,16 +165,36 @@ void setup(void) {
   server.on("/Sensors", HTTP_GET, WebserverSensors);
   server.on("/Output", HTTP_GET, WebserverOutput);
   server.on("/POST", HTTP_POST, WebserverPOST);
-  
+  #ifdef BGTDEBUG
+    Serial.println("Webserver gestartet");
+  #endif
+  //MQTT
+  MQTTinit();
+  #ifdef BGTDEBUG
+    Serial.println("MQTT initiiert");
+  #endif
   //Output config
   //Port Extension
   Inputs.StatesHW = MCPinit(mcp, MCPState);
+  #ifdef BGTDEBUG
+    Serial.println("MCP initiiert");
+  #endif
   //Output_Values.Outputstates = InitOutputStates(mcp, OutputsBasicSettings, MCPState, &Output_Values.OutputstatesAutoSSRelais); 
   InitOutputStates(mcp, OutputsBasicSettings, MCPState, &Output_Values); 
+  #ifdef BGTDEBUG
+    Serial.println("Ausgänge initiiert");
+  #endif
   MQTT_sendMessage((MQTTSendRoot[3]+"realOutput").c_str(), Output_Values.realValue);
 
-  MQTT_SendInputStates();
+  #ifdef BGTDEBUG
+    Serial.println("MQTT send real Output");
+  #endif
 
+  MQTT_SendInputStates();
+  #ifdef BGTDEBUG
+    Serial.println("MQTT_SendInputStates");
+  #endif
+  ValveHeating = new ThreeWayValve(2, 3);
   //AirSens init
   AirSensValues = new AirQualitySensor(AirSensOnOff, AirSensAnalogPort);
 }
@@ -167,9 +208,11 @@ void loop(void) {
     {
       if(!MQTTclient->loop())
       {
-        MQTTclient->disconnect();
         MQTTinit();
       }
+      #ifdef BGTDEBUG
+        Serial.println("MQTTclient loop");
+      #endif
     }
     else
     {
@@ -178,17 +221,24 @@ void loop(void) {
       #endif
     } 
   } 
+  if(millis()>Break_60s)
+  {
+    Break_60s = millis() + 60000;
+    MQTT_sendMessage((MQTTSendRoot[3]+"WLAN-Status").c_str(), WiFi.status());
+    MQTT_sendMessage((MQTTSendRoot[3]+"WLAN-Verbindung").c_str(), WiFi.RSSI());
+  }
+
   if(millis()>Break_10s)
   {
     Break_10s = millis() + 10000;
     SensorPort1.StartConversion();
     SensorPort2.StartConversion();
+    MQTT_sendMessage((MQTTSendRoot[5]+"SensorState").c_str(), AirSensValues->getSensorState());
     MQTT_sendMessage((MQTTSendRoot[5]+"ADConverter").c_str(), AirSensValues->getHWValue());
     MQTT_sendMessage((MQTTSendRoot[5]+"LPG").c_str(), AirSensValues->readLPG());
     MQTT_sendMessage((MQTTSendRoot[5]+"CO").c_str(), AirSensValues->readCO());
     MQTT_sendMessage((MQTTSendRoot[5]+"Smoke").c_str(), AirSensValues->readSMOKE());
-    MQTT_sendMessage((MQTTSendRoot[5]+"SensorState").c_str(), AirSensValues->getSensorState());
-    
+    MQTT_sendMessage((MQTTSendRoot[3]+"VentilHK2").c_str(), ValveHeating->getValvePosition());
     #ifdef BGTDEBUG
       Serial.print(timeClient->getFormattedTime());
       Serial.print(" ");
@@ -198,15 +248,18 @@ void loop(void) {
   if(millis()>Break_s)
   {
     Break_s = millis() + 1000;
-    uint8 oldRealValue = Output_Values.realValue;
-    if(oldRealValue != getRealOutput(&Output_Values, &Inputs))
-      MQTT_sendMessage((MQTTSendRoot[3]+"realOutput").c_str(), Output_Values.realValue);
   }
   if (Break_h < millis())
   {
     Break_h = millis() + 3600000;
     WIFIConnectionCheck(true);
     timeClient->update();
+  }
+  uint8 oldRealValue = Output_Values.realValue;
+  if(oldRealValue != getRealOutput(&Output_Values, &Inputs))
+  {
+    ValveHeating->updateState(&Output_Values);
+    MQTT_sendMessage((MQTTSendRoot[3]+"realOutput").c_str(), Output_Values.realValue);
   }
   //MQTT
   if(varConfig.NW_Flags & NW_MQTTActive)
@@ -259,11 +312,16 @@ bool MQTTinit()
 {
   if((varConfig.NW_Flags & NW_MQTTActive)==0)
     return false;
+  if(millis() < (lastMQTTInit+60000))
+    return false;
+  else
+    lastMQTTInit = millis();
+
   if(MQTTclient->connected())
     MQTTclient->disconnect();
   IPAddress IPTemp;
   IPTemp.fromString(varConfig.MQTT_Server);
-  MQTTclient->setServer(IPTemp, varConfig.MQTT_Port);
+  MQTTclient->setServer(IPTemp, varConfig.MQTT_Port);  
   MQTTclient->setCallback(MQTT_callback);
   unsigned long int StartTime = millis();
   while ((millis() < (StartTime + 5000)&&(!MQTTclient->connect((varConfig.NW_Flags & NW_EthernetActive)?EthernetMAC:WiFi.macAddress().c_str() , varConfig.MQTT_Username, varConfig.MQTT_Password)))){
@@ -323,6 +381,7 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
   String TempTopic = topic;
   String Value = (char*) payload;
   Value = Value.substring(0, length);
+  uint16 TempPort = 0;
   
   if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[0].length()))==MQTTSubscribeRoot[0])
   {
@@ -336,6 +395,31 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
       return;
     }
     SetOutput(OutputIndex, Value.toInt(), &Output_Values, mcp, MCPState);
+    TempPort = mcp[MCPOutput].readGPIOAB();
+    if(TempPort!=Output_Values.Outputstates)
+    {
+        //Vorbereitung Datum 
+      unsigned long long epochTime = timeClient->getEpochTime();
+      struct tm *ptm = gmtime((time_t *)&epochTime);
+      int monthDay = ptm->tm_mday;
+      int currentMonth = ptm->tm_mon + 1;
+      int currentYear = ptm->tm_year + 1900;
+
+      String TempText = topic, TempPath = "Fehler";
+      TempText += timeClient->getFormattedTime() + ", ";
+      TempText += monthDay;
+      TempText += ".";
+      TempText += currentMonth;
+      TempText += ".";
+      TempText += currentYear;
+      TempText += " -> Differenz Ausgang soll zu ist erkannt: Soll ";
+      TempText += IntToStr(Output_Values.Outputstates);
+      TempText += ", Ist ";
+      TempText += IntToStr(TempPort);
+      MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
+      MCPinit(mcp, MCPState);
+      mcp[MCPOutput].writeGPIOAB(Output_Values.Outputstates);
+    }
   }
   else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[1].length()))==MQTTSubscribeRoot[1])
   {
@@ -397,6 +481,12 @@ int FindOutputName(const char* Topic)
 void MQTT_SendInputStates()
 {
   String Temp = MQTTSendRoot[1] + "InputPort";
+  if(MQTTclient == 0)
+    return;
+
+  if(!MQTTclient->connected())
+    return;
+
   MQTT_sendMessage(Temp.c_str(), (uint8) ~Inputs.StatesHW);
   for(int i = 0; i<8; i++)
   {
@@ -411,6 +501,18 @@ bool MQTT_sendMessage(const char * ValueName, const uint8* MSG, uint8 len)
 {
   int lenPath = strlen(varConfig.MQTT_rootpath);
   char strPathVar[lenPath+30];
+  #ifdef BGTDEBUG
+    Serial.println("Vor connected Abfrage in MQTT_SenMessage");
+  #endif
+
+  if(MQTTclient == 0)
+    return false;
+
+  if(!MQTTclient->connected())
+    return false;
+  #ifdef BGTDEBUG
+    Serial.println("Nach connected Abfrage in MQTT_SenMessage");
+  #endif
 
   sprintf(strPathVar, "%s/%s", varConfig.MQTT_rootpath, ValueName);
   return MQTTclient->publish(strPathVar, MSG, len, true);
@@ -528,6 +630,10 @@ void NetworkInit(bool OnlyWiFi)
   if(varConfig.NW_Flags & NW_EthernetActive)  //If Ethernet active than MQTT should connected over Ethernet
   {
     Ethernet.init(D0);
+    #ifdef BGTDEBUG
+      Serial.println("Ethernet initiiert");
+    #endif
+
     if(Ethernet.begin(mac)) //Configure IP address via DHCP
     {
       #ifdef BGTDEBUG
@@ -537,15 +643,29 @@ void NetworkInit(bool OnlyWiFi)
       #endif
       e_client = new EthernetClient;
       if(varConfig.NW_Flags & NW_MQTTActive)
+      {
         MQTTclient = new PubSubClient(*e_client);
+        #ifdef BGTDEBUG
+          Serial.println("MQTTclient Variable mit Ethernet-Client erstellt");
+        #endif
+      }
       ntpUDP = new EthernetUDP;
-      MQTT_NTP_over_Ethernet_activ = 1;
     }
     else
     {
+      #ifdef BGTDEBUG
+        Serial.println("Ethernet starten fehlgeschlagen");
+      #endif
       if(varConfig.NW_Flags & NW_MQTTActive)
         MQTTclient = new PubSubClient(*wifiClient);
+      #ifdef BGTDEBUG
+        Serial.println("MQTT client auf WLAN gestartet");
+      #endif
       ntpUDP = new WiFiUDP;
+      #ifdef BGTDEBUG
+        Serial.println("UDP Variable für NTP erstellt");
+      #endif
+      varConfig.NW_Flags &= ~NW_EthernetActive;
     }
   }
   else
@@ -663,7 +783,7 @@ void WebserverRoot(AsyncWebServerRequest *request)
   sprintf(Body_neu, html_NWconfig, Un_Checked[varConfig.NW_Flags & NW_WiFi_AP].c_str(), varConfig.WLAN_SSID, 
               Un_Checked[(varConfig.NW_Flags & NW_EthernetActive)/NW_EthernetActive].c_str(), Un_Checked[(varConfig.NW_Flags & NW_StaticIP)/NW_StaticIP].c_str(), varConfig.NW_IPAddress, varConfig.NW_IPAddressEthernet, varConfig.NW_NetzName, varConfig.NW_SubMask, varConfig.NW_Gateway, varConfig.NW_DNS, 
               varConfig.NW_NTPServer, pntSelected[0], pntSelected[1], pntSelected[2], pntSelected[3], pntSelected[4], 
-              Un_Checked[(varConfig.NW_Flags & NW_MQTTActive)/NW_MQTTActive].c_str(), varConfig.MQTT_Server, varConfig.MQTT_Port, varConfig.MQTT_Username, varConfig.MQTT_rootpath);
+              Un_Checked[(varConfig.NW_Flags & NW_MQTTActive)/NW_MQTTActive].c_str(), varConfig.MQTT_Server, varConfig.MQTT_Port, varConfig.MQTT_Username, varConfig.MQTT_rootpath, Un_Checked[(varConfig.NW_Flags & NW_MQTTSecure)/NW_MQTTSecure].c_str());
   sprintf(HTMLString, "%s%s", Header_neu, Body_neu);
 //  request->send(200, "text/html", HTMLString);
 
@@ -869,9 +989,8 @@ void WebserverPOST(AsyncWebServerRequest *request)
     }
     case submq:
     {
-      char tmp_MQTTOn = 0;
+      char tmp_MQTTOn = 0, tmp_MQTTSecureOn = 0;
       String Temp[6];
-      if(parameter <= 6)
       for (int i = 0; i < parameter; i++)
       {
         if (request->getParam(i)->name() == "mqMQTTOn")
@@ -886,6 +1005,8 @@ void WebserverPOST(AsyncWebServerRequest *request)
           Temp[3] = request->getParam(i)->value();
         else if (request->getParam(i)->name() == "mqRootpath")
           Temp[4] = request->getParam(i)->value();
+        else if (request->getParam(i)->name() == "mqMQTTsecureOn")
+          tmp_MQTTSecureOn = 1;
         else if (request->getParam(i)->name() == "mqFPrint")
           Temp[5] = request->getParam(i)->value();
         else
@@ -898,6 +1019,10 @@ void WebserverPOST(AsyncWebServerRequest *request)
         varConfig.NW_Flags |= NW_MQTTActive;}
       else{
         varConfig.NW_Flags &= ~NW_MQTTActive;}
+      if(tmp_MQTTSecureOn){
+        varConfig.NW_Flags |= NW_MQTTSecure;}
+      else{
+        varConfig.NW_Flags &= ~NW_MQTTSecure;}
       if((Temp[0].length()<49)&&(Temp[0].length()>5))
         strcpy(varConfig.MQTT_Server, Temp[0].c_str());
       if((Temp[1].length()<6)&&(Temp[1].length()>1))
@@ -911,7 +1036,7 @@ void WebserverPOST(AsyncWebServerRequest *request)
       if((Temp[5].length()<=65)&&(Temp[5].length()>5)&&(Temp[5]!= "xxxxxx"))
         strcpy(varConfig.MQTT_fprint, Temp[5].c_str());
       EinstSpeichern();
-      request->send_P(200, "text/html", "MQTT Daten wurden uebernommen, ESP wird neu gestartet!<br><meta http-equiv=\"refresh\" content=\"20; URL=\\\">"); //<a href=\>Startseite</a>
+      request->send_P(200, "text/html", "MQTT Daten wurden uebernommen, ESP startet neu!<br><meta http-equiv=\"refresh\" content=\"20; URL=\\\">"); //<a href=\>Startseite</a>
       ESP_Restart = true;
       break;
     }               
