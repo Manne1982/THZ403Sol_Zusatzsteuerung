@@ -38,13 +38,14 @@ struct NWConfig {
 
 struct digital_Output{
   char Name[15]="unnamed";
-  byte StartValue = 2; //0 = off; 1 = on; 2 = Auto; 3 = Auto but Output over Solid State Relais 
+  byte StartValue = 2; //0 = off; 1 = on; 2 = Auto; 3 = Auto but Output over Solid State Relais; 4 = Auto but Output over Solid State Relais Manu Relais always on; 5 = PWM
   byte MQTTState = 0; //0 = MQTT control off; 1 = MQTT control on
 };
 
 struct digital_Output_current_Values{
   uint16 Outputstates = 0xFFFF; //Variable for the current states of the Output MCP[0]
   uint16 OutputstatesAutoSSRelais = 0x0000;  //Variable for the Auto over SSR-Settings
+  uint16 OutputstatesAutoSSRelais_alwaysManu = 0x0000;  //Variable for the Auto over SSR-Settings and Manu Relais always on
   uint8 PWM_Manu_activ = 0x00; 
   uint8 PWM_Value[8] = {25, 25, 25, 25, 25, 25, 25, 25};
   uint16 PWM_CycleTime_ms = 10000;
@@ -91,6 +92,11 @@ public:
   void setChannelClose(uint8 _Channel);
   void setCycleTimeOpen(uint16 _Seconds);
   void setCycleTimeClose(uint16 _Seconds);
+  uint8 getChannelOpen();
+  uint8 getChannelClose();
+  uint16 getCycleTimeOpen();
+  uint16 getCycleTimeClose();
+  void setValvePosition(uint16 _Position);
   uint16 getValvePosition();
   void updateState(digital_Output_current_Values * _Outputs);
 private:

@@ -845,7 +845,7 @@ void WebserverSensors(AsyncWebServerRequest *request)
 }
 void WebserverOutput(AsyncWebServerRequest *request)
 {
-  uint16 StringLen = (strlen(html_header) + 50)+strlen(html_OPconfig1)+(8 * (strlen(html_OPconfig2) + 100)) + strlen(html_OPSEfooter);
+  uint16 StringLen = (strlen(html_header) + 50)+strlen(html_OPconfig1)+(8 * (strlen(html_OPconfig2) + 100))+ strlen(html_OPconfig1) + 20 + strlen(html_OPSEfooter);
   char *HTMLString = new char[StringLen];
   char *HTMLString2 = new char[StringLen];
   //Vorbereitung Datum 
@@ -867,8 +867,11 @@ void WebserverOutput(AsyncWebServerRequest *request)
                   Un_Checked[OutputsBasicSettings[i].MQTTState%2].c_str());
     strcpy(HTMLString2, HTMLString);
   }
+  sprintf(HTMLString, html_OPconfig3, HTMLString2, ValveHeating->getChannelOpen(), ValveHeating->getChannelClose(), ValveHeating->getCycleTimeOpen(), ValveHeating->getCycleTimeClose(), ValveHeating->getValvePosition());
   sprintf(HTMLString2, html_OPSEfooter, HTMLString);
-  request->send(200, "text/html", HTMLString2);
+  AsyncBasicResponse *response = new AsyncBasicResponse(200, "text/html", HTMLString2);
+  request->send(response);
+//  request->send(200, "text/html", HTMLString2);
   delete[] HTMLString;
   delete[] HTMLString2;
 }
@@ -1159,20 +1162,12 @@ void WebserverPOST(AsyncWebServerRequest *request)
             strcpy(OutputsBasicSettings[Port].Name, request->getParam(i)->value().c_str());
             break;
           case 2:
-            if((request->getParam(i)->value().toInt() > 3) || (request->getParam(i)->value().toInt() < 0))
+            if((request->getParam(i)->value().toInt() > 4) || (request->getParam(i)->value().toInt() < 0))
             {
               request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 822<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
               return;
             }
             OutputsBasicSettings[Port].StartValue = request->getParam(i)->value().toInt();
-            if(OutputsBasicSettings[Port].StartValue == 3)
-            {
-              Output_Values.OutputstatesAutoSSRelais |= (1<<Port);
-            }
-            else
-            {
-              Output_Values.OutputstatesAutoSSRelais &= ~(1<<Port);
-            }
             break;
           case 3:
             if(request->getParam(i)->value()!="on")
@@ -1189,6 +1184,59 @@ void WebserverPOST(AsyncWebServerRequest *request)
       }
       EinstSpeichern();
       request->send_P(200, "text/html", "Relaiseinstellungen wurden uebernommen!<br><meta http-equiv=\"refresh\" content=\"2; URL=/Output/\">"); //<a href=\>Startseite</a>
+      break;
+   }            
+    case subWV:
+    {
+      uint16 ValueType = 0, Value = 0;
+      for (int i = 0; i < parameter; i++)
+      {
+        if(sscanf(request->getParam(i)->name().c_str(), "WV_%hu", &ValueType) > 3)
+        {          
+          request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 808<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+          return;
+        }
+        Value = request->getParam(i)->value().toInt();
+        switch(ValueType)
+        {
+          case 0:
+            if(Value >7)
+            {
+              request->send_P(200, "text/html", "Channel 'Open' invalid Index 1206<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              return;
+            }
+            ValveHeating->setChannelOpen(Value);
+            break;
+          case 1:
+            if(Value >7)
+            {
+              request->send_P(200, "text/html", "Channel 'Close' invalid Index 1214<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              return;
+            }
+            break;
+          case 2:
+            if(Value >1000)
+            {
+              request->send_P(200, "text/html", "Cycle time 'Open' invalid Index 1221<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              return;
+            }
+            ValveHeating->setCycleTimeOpen(Value);
+            break;
+          case 3:
+            if(Value >1000)
+            {
+              request->send_P(200, "text/html", "Cycle time 'Close' invalid Index 1229<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+              return;
+            }
+            ValveHeating->setCycleTimeClose(Value);
+            break;
+          default:
+            request->send_P(200, "text/html", "Unbekannter Rueckgabewert Index 1235<form> <input type=\"button\" value=\"Go back!\" onclick=\"history.back()\"></form>");
+            return;
+        }
+      }
+      EinstSpeichern();
+      request->send_P(200, "text/html", "Ventileinstellungen wurden uebernommen!<br><meta http-equiv=\"refresh\" content=\"2; URL=/Output/\">"); //<a href=\>Startseite</a>
       break;
    }            
     default:

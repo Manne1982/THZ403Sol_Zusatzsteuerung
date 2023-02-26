@@ -151,6 +151,29 @@ uint16 ThreeWayValve::getValvePosition()
 
   return ValvePosition;
 }
+uint8 ThreeWayValve::getChannelOpen()
+{
+  return ChannelOpen;
+}
+uint8 ThreeWayValve::getChannelClose()
+{
+  return ChannelClose;
+}
+uint16 ThreeWayValve::getCycleTimeOpen()
+{
+  return CycleTimeOpen_s;
+}
+uint16 ThreeWayValve::getCycleTimeClose()
+{
+  return CycleTimeClose_s;
+}
+void ThreeWayValve::setValvePosition(uint16 _Position)
+{
+  if(_Position > 10000)
+    return;
+  ValvePosition = _Position;
+}
+
 //Zu alleine Auf beide Kanäle
 void ThreeWayValve::updateState(digital_Output_current_Values * _Outputs)
 {
@@ -311,7 +334,7 @@ void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Outp
 {
   if(MCPStates[MCPOutput] != 1)
     return;
-  if((Value < 0) || (Value > 4))
+  if((Value < 0) || (Value > 5))
     return;
   switch(Value)
   {
@@ -321,6 +344,7 @@ void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Outp
       _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex)+((uint16) 1<<(OutputIndex+8)));
       _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
       _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu &= ~(1<<OutputIndex);
       break;
     case 0:
       setRelaisManuAuto(_MCP, OutputIndex, 1, MCPStates);
@@ -329,6 +353,7 @@ void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Outp
       _Output->Outputstates |= (uint16)((uint16)1<<(OutputIndex+8));
       _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
       _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu &= ~(1<<OutputIndex);
       break;
     case 2:
       setRelaisManuAuto(_MCP, OutputIndex, 0, MCPStates);
@@ -336,6 +361,7 @@ void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Outp
       _Output->Outputstates |= (uint16)(((uint16)1<<OutputIndex)+((uint16)1<<(OutputIndex+8)));
       _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
       _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu &= ~(1<<OutputIndex);
       break;
     case 3:
       setRelaisManuAuto(_MCP, OutputIndex, 0, MCPStates);
@@ -343,14 +369,25 @@ void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Outp
       _Output->Outputstates |= (uint16)(((uint16)1<<OutputIndex)+((uint16)1<<(OutputIndex+8)));
       _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
       _Output->OutputstatesAutoSSRelais |= (1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu &= ~(1<<OutputIndex);
       break;
-    case 4: //Manuel PWM mode, only configurable over MQTT
+    case 4:
+      setRelaisManuAuto(_MCP, OutputIndex, 1, MCPStates);
+      setSSR(_MCP, OutputIndex, 0, MCPStates);
+      _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex));
+      _Output->Outputstates |= (uint16)((uint16)1<<(OutputIndex+8));
+      _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu |= (1<<OutputIndex);
+      break;
+    case 5: //Manuel PWM mode, only configurable over MQTT
       setRelaisManuAuto(_MCP, OutputIndex, 1, MCPStates);
       setSSR(_MCP, OutputIndex, 0, MCPStates);
       _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex));
       _Output->Outputstates |= (uint16)((uint16)1<<(OutputIndex+8));
       _Output->PWM_Manu_activ |= (1<<OutputIndex);
       _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu &= ~(1<<OutputIndex);
       break;
     default:
       #ifdef BGTDEBUG
@@ -417,6 +454,10 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _In
       if(_Inputs->OnTimeRatio[i] && (_Output->OutputstatesAutoSSRelais & (1<<(7-i)))&&((InputOldValue&(1<<i))!=(_Inputs->StatesHW&(1<<i))))
       {
         setRelaisManuAuto(_MCP, 7-i, 1, MCPStates);
+        setSSR(_MCP, 7-i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), MCPStates);
+      }
+      if((_Output->OutputstatesAutoSSRelais_alwaysManu & (1<<(7-i)))&&((InputOldValue&(1<<i))!=(_Inputs->StatesHW&(1<<i))))
+      {
         setSSR(_MCP, 7-i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), MCPStates);
       }
     }
