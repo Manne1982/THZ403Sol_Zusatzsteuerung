@@ -55,6 +55,7 @@ bool MQTT_sendMessage(const char * ValueName, int MSG);
 bool MQTT_sendMessage(const char * ValueName, uint8 MSG);
 bool MQTT_sendMessage(const char * ValueName, uint32 MSG);
 bool MQTT_sendMessage(const char * ValueName, float MSG);
+void MQTT_SendFailureText(String Text, bool withDate = false);
 
 //Projektvariablen
 NWConfig varConfig;
@@ -378,47 +379,32 @@ bool MQTTinit()
 }
 void MQTT_callback(char* topic, byte* payload, unsigned int length)
 {
-  String TempTopic = topic;
+  const String TempTopic = topic;
   String Value = (char*) payload;
   Value = Value.substring(0, length);
-  uint16 TempPort = 0;
+  uint8 TempPort = 0;
   
   if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[0].length()))==MQTTSubscribeRoot[0])
   {
     int OutputIndex = FindOutputName(&topic[strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[0].length()]);
     if(OutputIndex < 0)
     { 
-      String TempText = topic, TempPath = "Fehler";
-      TempText += " -> ";
-      TempText += (char) payload[0];
-      MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
+      MQTT_SendFailureText("Ausgang nicht gefunden: " + TempTopic.substring(strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[2].length()));
       return;
     }
     SetOutput(OutputIndex, Value.toInt(), &Output_Values, mcp, MCPState);
-    TempPort = mcp[MCPOutput].readGPIOAB();
-    if(TempPort!=Output_Values.Outputstates)
+    TempPort = mcp[MCPOutput].readGPIOA();
+    if(TempPort!=(Output_Values.Outputstates&0x00FF))
     {
-        //Vorbereitung Datum 
-      unsigned long long epochTime = timeClient->getEpochTime();
-      struct tm *ptm = gmtime((time_t *)&epochTime);
-      int monthDay = ptm->tm_mday;
-      int currentMonth = ptm->tm_mon + 1;
-      int currentYear = ptm->tm_year + 1900;
-
-      String TempText = topic, TempPath = "Fehler";
-      TempText += timeClient->getFormattedTime() + ", ";
-      TempText += monthDay;
-      TempText += ".";
-      TempText += currentMonth;
-      TempText += ".";
-      TempText += currentYear;
-      TempText += " -> Differenz Ausgang soll zu ist erkannt: Soll ";
+      String TempText = topic;
+      TempText += " -> Differenz Ausgang Port A soll zu ist erkannt: Soll ";
       TempText += IntToStr(Output_Values.Outputstates);
       TempText += ", Ist ";
       TempText += IntToStr(TempPort);
-      MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
+      MQTT_SendFailureText(TempText);
       MCPinit(mcp, MCPState);
-      mcp[MCPOutput].writeGPIOAB(Output_Values.Outputstates);
+      DO_new_Init(mcp, &Output_Values, MCPState);
+      //mcp[MCPOutput].writeGPIOAB(Output_Values.Outputstates);
     }
   }
   else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[1].length()))==MQTTSubscribeRoot[1])
@@ -453,19 +439,14 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
     int OutputIndex = FindOutputName(&topic[strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[2].length()]), ValueTemp = 0;
     if(OutputIndex < 0)
     { 
-      String TempText = topic, TempPath = "Fehler";
-      TempText += " -> ";
-      TempText += (char) payload[0];
-      MQTT_sendMessage(TempPath.c_str(), ( const uint8 *) TempText.c_str(), TempText.length());
+      MQTT_SendFailureText("Ausgang nicht gefunden: " + TempTopic.substring(strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[2].length()));
       return;
     }
     ValueTemp = Value.toInt();
     if((ValueTemp >= Output_Values.PWM_Min)&&(ValueTemp <= Output_Values.PWM_Max))
     {
       Output_Values.PWM_Value[OutputIndex] = (uint8) ValueTemp;
-      TempTopic = MQTTSendRoot[2];
-      TempTopic += OutputsBasicSettings[OutputIndex].Name;
-      MQTT_sendMessage(TempTopic.c_str(), ValueTemp);
+      MQTT_sendMessage((MQTTSendRoot[2] + OutputsBasicSettings[OutputIndex].Name).c_str(), ValueTemp);
     }    
   }
 }
@@ -496,6 +477,21 @@ void MQTT_SendInputStates()
     Temp.replace(MQTTSendRoot[0], MQTTSendRoot[1]);
     MQTT_sendMessage(Temp.c_str(), Inputs.StatesHW&1<<i?0:1);
   }
+}
+void MQTT_SendFailureText(String Text, bool withDate)
+{
+  char strDate[50] = "";
+  if(withDate)
+  {
+    unsigned long long epochTime = timeClient->getEpochTime();
+    struct tm *ptm = gmtime((time_t *)&epochTime);
+    int monthDay = ptm->tm_mday;
+    int currentMonth = ptm->tm_mon + 1;
+    int currentYear = ptm->tm_year + 1900;
+    sprintf(strDate, "%s - %02d.%02d.%d -> ", timeClient->getFormattedTime().c_str(), monthDay, currentMonth, currentYear);
+  }
+  Text = strDate + Text;
+  MQTT_sendMessage((MQTTSendRoot[3] + "Fehler").c_str(), (const uint8 *) Text.c_str(), Text.length());
 }
 bool MQTT_sendMessage(const char * ValueName, const uint8* MSG, uint8 len)
 {

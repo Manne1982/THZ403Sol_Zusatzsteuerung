@@ -454,11 +454,31 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _In
       if(_Inputs->OnTimeRatio[i] && (_Output->OutputstatesAutoSSRelais & (1<<(7-i)))&&((InputOldValue&(1<<i))!=(_Inputs->StatesHW&(1<<i))))
       {
         setRelaisManuAuto(_MCP, 7-i, 1, MCPStates);
-        setSSR(_MCP, 7-i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), MCPStates);
+//        setSSR(_MCP, 7-i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), MCPStates);
+        if(~_Inputs->StatesHW & (1<<i))
+        {
+          setSSR(_MCP, 7-i ,1 , MCPStates);
+          _Output->Outputstates &= (uint16) ~((uint16) 1<<((7-i)+8));
+        }
+        else
+        {
+          setSSR(_MCP, 7-i ,0 , MCPStates);
+          _Output->Outputstates |= (uint16)((uint16)1<<((7-i)+8));
+        }
       }
       if((_Output->OutputstatesAutoSSRelais_alwaysManu & (1<<(7-i)))&&((InputOldValue&(1<<i))!=(_Inputs->StatesHW&(1<<i))))
       {
-        setSSR(_MCP, 7-i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), MCPStates);
+//        setSSR(_MCP, 7-i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), MCPStates);
+        if(~_Inputs->StatesHW & (1<<i))
+        {
+          setSSR(_MCP, 7-i ,1 , MCPStates);
+          _Output->Outputstates &= (uint16) ~((uint16) 1<<((7-i)+8));
+        }
+        else
+        {
+          setSSR(_MCP, 7-i ,0 , MCPStates);
+          _Output->Outputstates |= (uint16)((uint16)1<<((7-i)+8));
+        }
       }
     }
     anyChange = true;
@@ -499,9 +519,17 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _In
   }
   return anyChange;
 }
-void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * MCPStates)
+void DO_new_Init(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values * _Output, int * _MCPStates)
 {
-  if(MCPStates[MCPOutput] != 1)
+  for(int i = 0; i < 8; i++)
+  {
+    setSSR(_MCP, i, (uint8)(_Output->Outputstates&(1<<(i+8))/(1<<(i+8))), _MCPStates);
+    setRelaisManuAuto(_MCP, i, (uint8)(_Output->Outputstates&(1<<i)/(1<<i)), _MCPStates);
+  }
+}
+void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * _MCPStates)
+{
+  if(_MCPStates[MCPOutput] != 1)
     return;
   if(OutputIndex>7)
     return;
@@ -510,9 +538,9 @@ void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * MCP
   else
     _MCP[MCPOutput].pinMode(OutputIndex + 8, INPUT); //Switch off the SSR (Solid State Relais)
 }
-void setRelaisManuAuto(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 Manu, int * MCPStates)
+void setRelaisManuAuto(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 Manu, int * _MCPStates)
 {
-  if(MCPStates[MCPOutput] != 1)
+  if(_MCPStates[MCPOutput] != 1)
     return;
   if(OutputIndex>7)
     return;
