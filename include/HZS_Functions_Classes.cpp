@@ -6,7 +6,7 @@
 AirQualitySensor::AirQualitySensor(uint8 _PortOnOff, uint8 _PortAnalogInput):
 SensorState(0),
 OnTime_ms(0),
-HeatingTime_ms(6000), //10 Minutes
+HeatingTime_ms(180000), //3 Minutes
 AirSensInitiated(0)
 {
   PortOnOff = _PortOnOff;
@@ -23,6 +23,8 @@ AirQualitySensor::~AirQualitySensor()
 }
 byte AirQualitySensor::getSensorState()
 {
+  if((SensorState == 1)&&(millis()< (OnTime_ms + HeatingTime_ms)))
+    return 2;
   return SensorState;
 }
 void AirQualitySensor::setSensorState(byte newState)
@@ -97,6 +99,111 @@ uint16 AirQualitySensor::getHWValue()
 {
   return analogRead(PortAnalogInput);
 }
+//Three Way Valve Class functions
+
+ThreeWayValve::ThreeWayValve(uint8 _ChannelOpen, uint8 _ChannelClose):
+CycleTimeOpen_s(150),
+CycleTimeClose_s(150),
+ValvePosition(5000),
+OnTimeOpen_ms(0),
+OnTimeClose_ms(0)
+{
+  ChannelOpen = (_ChannelOpen < 8)?_ChannelOpen:0;
+  ChannelClose = (_ChannelClose < 8)?_ChannelClose:0;
+}
+ThreeWayValve::~ThreeWayValve()
+{}
+void ThreeWayValve::setChannelOpen(uint8 _Channel)
+{
+  ChannelOpen = (_Channel < 8)?_Channel:0;
+}
+void ThreeWayValve::setChannelClose(uint8 _Channel)
+{
+  ChannelClose = (_Channel < 8)?_Channel:0;
+}
+void ThreeWayValve::setCycleTimeOpen(uint16 _Seconds)
+{
+  CycleTimeOpen_s = _Seconds;
+}
+void ThreeWayValve::setCycleTimeClose(uint16 _Seconds)
+{
+  CycleTimeClose_s = _Seconds;
+}
+uint16 ThreeWayValve::getValvePosition()
+{
+  uint16 Temp = 0;
+  if(OnTimeOpen_ms)
+  {
+    Temp = ValvePosition + 10000L * (millis() - OnTimeOpen_ms) / (CycleTimeOpen_s * 1000);
+    if(Temp > 10000)
+      return 10000;
+    else 
+      return Temp;
+  }
+  else if(OnTimeClose_ms)
+  {
+    Temp = ValvePosition - 10000L * (millis() - OnTimeClose_ms) / (CycleTimeClose_s * 1000);
+    if(Temp > 10000)
+      return 0;
+    else
+      return Temp;
+  }
+
+  return ValvePosition;
+}
+uint8 ThreeWayValve::getChannelOpen()
+{
+  return ChannelOpen;
+}
+uint8 ThreeWayValve::getChannelClose()
+{
+  return ChannelClose;
+}
+uint16 ThreeWayValve::getCycleTimeOpen()
+{
+  return CycleTimeOpen_s;
+}
+uint16 ThreeWayValve::getCycleTimeClose()
+{
+  return CycleTimeClose_s;
+}
+void ThreeWayValve::setValvePosition(uint16 _Position)
+{
+  if(_Position > 10000)
+    return;
+  ValvePosition = _Position;
+}
+
+//Zu alleine Auf beide Kanäle
+void ThreeWayValve::updateState(digital_Output_current_Values * _Outputs)
+{
+  if(!(_Outputs->realValue&((1 << ChannelOpen)|(1 << ChannelClose))) && !(OnTimeClose_ms + OnTimeOpen_ms)) {
+    return;}
+  
+  if((_Outputs->realValue&(1<<ChannelOpen)) && ((OnTimeOpen_ms + OnTimeClose_ms)==0))
+  {
+    OnTimeOpen_ms = millis();
+  }
+  else if((_Outputs->realValue&(1<<ChannelClose)) && ((OnTimeOpen_ms + OnTimeClose_ms)==0))
+  {
+    OnTimeClose_ms = millis();
+  }
+  else if(OnTimeOpen_ms)
+  {
+    ValvePosition += 10000L * (millis() - OnTimeOpen_ms) / (CycleTimeOpen_s * 1000);
+    if(ValvePosition > 10000)
+      ValvePosition = 10000;
+    OnTimeOpen_ms = 0;
+  }
+  else if(OnTimeClose_ms)
+  {
+    ValvePosition -= 10000L * (millis() - OnTimeClose_ms) / (CycleTimeClose_s * 1000);
+    if(ValvePosition > 10000)
+      ValvePosition = 0;
+    OnTimeClose_ms = 0;
+  }
+}
+
 
 //Input Output Functions
 TempSensor * FindTempSensor(TempSensor * TSArray, uint8 ArrayLen, uint64 Address)
@@ -195,10 +302,14 @@ uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates)
 {
   MCPStates[MCPOutput] = MCPSetup(&MCP[MCPOutput], MCPPort0);
   MCPStates[MCPInput] = MCPSetup(&MCP[MCPInput], MCPPort1);
-  MCP[MCPOutput].writeGPIOAB(0xFFFF); //Set all outputs on High to put off the relaises
+  MCP[MCPOutput].writeGPIOAB(0x00FF); //Set all outputs on High to put off the relaises
   for(int i =0; i <16; i++)
   {
-    MCP[MCPOutput].pinMode(i, OUTPUT);
+    if(i<8)
+      MCP[MCPOutput].pinMode(i, OUTPUT);
+    else
+      MCP[MCPOutput].pinMode(i, INPUT); //Use external Pullup
+
     MCP[MCPInput].pinMode(i, INPUT_PULLUP);
     MCP[MCPInput].setupInterruptPin(i, CHANGE);
   }
@@ -209,48 +320,21 @@ uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates)
   else
     return 0;
 }
-uint16 InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates, uint16 * AutoOverSSRelais)
+void InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MCPStates, digital_Output_current_Values * _Output_Values)
 {
-  uint8 Manu_Auto = 0xFF; //all outputs Auto = 0xFF; all outputs Manu = 0x00
-  uint8 Manu_ONOFF = 0xFF;  //all outputs Off (Manu) = 0xFF; all outputs On (Manu) = 0x00
-  uint16 OutputConfig = 0;
   if(MCPStates[MCPOutput] == 1)
   {
     for(int i = 0; i < 8; i++)
     {
-      switch(Config[i].StartValue)
-      {
-        case 1:
-          MCP[MCPOutput].pinMode(i+8, OUTPUT); //Switch SSRelais ON in Manu-Mode
-          Manu_ONOFF &= ~(1<<i); //No break to switch into Manu Mode
-        case 0:
-          MCP[MCPOutput].digitalWrite(i, 0);  //Switch Relais for Manu-Mode
-          Manu_Auto &= ~(1<<i);
-          break;
-        case 3: //Switch to Manu-Mode fist if any Input messured to save energy
-          *AutoOverSSRelais |= (1<<i);
-        case 2:
-          MCP[MCPOutput].pinMode(i+8, INPUT);  //Switch SSRelais of 
-          MCP[MCPOutput].digitalWrite(i, 1);    //Switch Relais to Auto-Mode
-          break;        
-        default:
-          #ifdef BGTDEBUG
-            Serial.println("Wrong StartValue for Output Config");
-          #endif
-          break;
-      }
+      SetOutput(i, Config[i].StartValue, _Output_Values, MCP, MCPStates);
     }
-    OutputConfig = Manu_ONOFF << 8;
-    OutputConfig |= Manu_Auto;
-    return OutputConfig;
   }
-  return 0xFFFF; //Return all ports Auto
 }
 void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Output, Adafruit_MCP23X17 * _MCP, int * MCPStates)
 {
   if(MCPStates[MCPOutput] != 1)
     return;
-  if((Value < 0) || (Value > 4))
+  if((Value < 0) || (Value > 5))
     return;
   switch(Value)
   {
@@ -259,6 +343,8 @@ void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Outp
       setSSR(_MCP, OutputIndex, 1, MCPStates);
       _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex)+((uint16) 1<<(OutputIndex+8)));
       _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu &= ~(1<<OutputIndex);
       break;
     case 0:
       setRelaisManuAuto(_MCP, OutputIndex, 1, MCPStates);
@@ -266,20 +352,42 @@ void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Outp
       _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex));
       _Output->Outputstates |= (uint16)((uint16)1<<(OutputIndex+8));
       _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu &= ~(1<<OutputIndex);
       break;
     case 2:
+      setRelaisManuAuto(_MCP, OutputIndex, 0, MCPStates);
+      setSSR(_MCP, OutputIndex, 0, MCPStates);
+      _Output->Outputstates |= (uint16)(((uint16)1<<OutputIndex)+((uint16)1<<(OutputIndex+8)));
+      _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu &= ~(1<<OutputIndex);
+      break;
     case 3:
       setRelaisManuAuto(_MCP, OutputIndex, 0, MCPStates);
       setSSR(_MCP, OutputIndex, 0, MCPStates);
       _Output->Outputstates |= (uint16)(((uint16)1<<OutputIndex)+((uint16)1<<(OutputIndex+8)));
       _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais |= (1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu &= ~(1<<OutputIndex);
       break;
-    case 4: //Manuel PWM mode, only configurable over MQTT
+    case 4:
+      setRelaisManuAuto(_MCP, OutputIndex, 1, MCPStates);
+      setSSR(_MCP, OutputIndex, 0, MCPStates);
+      _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex));
+      _Output->Outputstates |= (uint16)((uint16)1<<(OutputIndex+8));
+      _Output->PWM_Manu_activ &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu |= (1<<OutputIndex);
+      break;
+    case 5: //Manuel PWM mode, only configurable over MQTT
       setRelaisManuAuto(_MCP, OutputIndex, 1, MCPStates);
       setSSR(_MCP, OutputIndex, 0, MCPStates);
       _Output->Outputstates &= (uint16) ~(((uint16) 1<<OutputIndex));
       _Output->Outputstates |= (uint16)((uint16)1<<(OutputIndex+8));
       _Output->PWM_Manu_activ |= (1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais &= ~(1<<OutputIndex);
+      _Output->OutputstatesAutoSSRelais_alwaysManu &= ~(1<<OutputIndex);
       break;
     default:
       #ifdef BGTDEBUG
@@ -296,10 +404,11 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _In
   if((MCPStates[MCPOutput] != 1)||(MCPStates[MCPInput] != 1))
     return false;
 
+  unsigned long currentTime = millis();
   if(!Interrupt) //is there any change of digital inputs
   {
-    unsigned long currentTime = millis();
     _Inputs->StatesHW = _MCP[MCPInput].readGPIOA();
+    _Inputs->lastReading = millis();
     for (int i = 0; i < 8; i++)
     {
       switch(_Inputs->ReadStep[i])
@@ -342,16 +451,46 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _In
         default:
           break;
       }
-      if(_Inputs->OnTimeRatio[i] && (_Output->OutputstatesAutoSSRelais & (1<<i))&&((InputOldValue&(1<<i))!=(_Inputs->StatesHW&(1<<i))))
+      if(_Inputs->OnTimeRatio[i] && (_Output->OutputstatesAutoSSRelais & (1<<(7-i)))&&((InputOldValue&(1<<i))!=(_Inputs->StatesHW&(1<<i))))
       {
-        SetOutput(i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), _Output, _MCP, MCPStates);
+        setRelaisManuAuto(_MCP, 7-i, 1, MCPStates);
+//        setSSR(_MCP, 7-i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), MCPStates);
+        if(~_Inputs->StatesHW & (1<<i))
+        {
+          setSSR(_MCP, 7-i ,1 , MCPStates);
+          _Output->Outputstates &= (uint16) ~((uint16) 1<<((7-i)+8));
+        }
+        else
+        {
+          setSSR(_MCP, 7-i ,0 , MCPStates);
+          _Output->Outputstates |= (uint16)((uint16)1<<((7-i)+8));
+        }
+      }
+      if((_Output->OutputstatesAutoSSRelais_alwaysManu & (1<<(7-i)))&&((InputOldValue&(1<<i))!=(_Inputs->StatesHW&(1<<i))))
+      {
+//        setSSR(_MCP, 7-i, ((~_Inputs->StatesHW & (1<<i))/(1<<i)), MCPStates);
+        if(~_Inputs->StatesHW & (1<<i))
+        {
+          setSSR(_MCP, 7-i ,1 , MCPStates);
+          _Output->Outputstates &= (uint16) ~((uint16) 1<<((7-i)+8));
+        }
+        else
+        {
+          setSSR(_MCP, 7-i ,0 , MCPStates);
+          _Output->Outputstates |= (uint16)((uint16)1<<((7-i)+8));
+        }
       }
     }
     anyChange = true;
   }
   else
   {
-    unsigned long currentTime = millis();
+    if((_Inputs->lastReading + 10000) < currentTime)
+    {
+      _Inputs->StatesHW = _MCP[MCPInput].readGPIOA();
+      _Inputs->lastReading = millis();
+      anyChange = InputOldValue != _Inputs->StatesHW;
+    }
     for (int i = 0; i < 8; i++)
     {
       if((_Inputs->ReadStep[i] == 3) || (_Inputs->ReadStep[i] == 4))
@@ -372,28 +511,36 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _In
         _Inputs->TimeStartpoints[i][1] = 0;
         anyChange = true;
       }
-      if((_Inputs->OnTimeRatio[i]==0)&&(_Output->OutputstatesAutoSSRelais & (1<<i))&&((~_Output->Outputstates) & (uint16)(1<<i))) //if Input ratio on 0 switch off the relais for Manu mode to save energy
+      if((_Inputs->OnTimeRatio[i]==0)&&(_Output->OutputstatesAutoSSRelais & (1<<(7-i))) && anyChange) //if Input ratio on 0 switch off the relais for Manu mode to save energy
       {
-        SetOutput(i, 3, _Output, _MCP, MCPStates);
+        SetOutput((7-i), 3, _Output, _MCP, MCPStates);
       }
     }
   }
   return anyChange;
 }
-void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * MCPStates)
+void DO_new_Init(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values * _Output, int * _MCPStates)
 {
-  if(MCPStates[MCPOutput] != 1)
+  for(int i = 0; i < 8; i++)
+  {
+    setSSR(_MCP, i, (uint8)(_Output->Outputstates&(1<<(i+8))/(1<<(i+8))), _MCPStates);
+    setRelaisManuAuto(_MCP, i, (uint8)(_Output->Outputstates&(1<<i)/(1<<i)), _MCPStates);
+  }
+}
+void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * _MCPStates)
+{
+  if(_MCPStates[MCPOutput] != 1)
     return;
   if(OutputIndex>7)
     return;
   if(On_Off)
     _MCP[MCPOutput].pinMode(OutputIndex + 8, OUTPUT); //Switch on the SSR (Solid State Relais)
   else
-    _MCP[MCPOutput].pinMode(OutputIndex + 8, OUTPUT); //Switch on the SSR (Solid State Relais)
+    _MCP[MCPOutput].pinMode(OutputIndex + 8, INPUT); //Switch off the SSR (Solid State Relais)
 }
-void setRelaisManuAuto(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 Manu, int * MCPStates)
+void setRelaisManuAuto(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 Manu, int * _MCPStates)
 {
-  if(MCPStates[MCPOutput] != 1)
+  if(_MCPStates[MCPOutput] != 1)
     return;
   if(OutputIndex>7)
     return;
@@ -428,6 +575,29 @@ void updateOutputPWM(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _O
       }
     }
   }
+}
+uint8 getRealOutput(digital_Output_current_Values * _Output_Values, digital_Input * _Inputs)
+{ 
+  uint8 returnValue = 0;
+  for(int i = 0; i < 8; i++)
+  {
+    if(~_Output_Values->Outputstates & (1<<i))
+    {
+      if((~_Output_Values->Outputstates & (1<<(i+8)))||(_Output_Values->PWM_CurrentState & (1<<i)))
+      {
+        returnValue |= (1<<i);
+      }
+    }
+    else
+    {
+      if(~_Inputs->StatesHW & (1<<(7-i)))
+      {
+        returnValue |= (1<<i);
+      }
+    }
+  }
+  _Output_Values->realValue = returnValue;
+  return returnValue;
 }
 //---------------------------------------------------------------------
 uint64 StrToLongInt(String Input)

@@ -29,6 +29,10 @@ Value (0 - 1)
 0 = switch off WLAN only possible if Ethernet port active
 1 = switch on WLAN
 
+Root_Path/setGeneral/ESP_Restart
+Value (1)
+1 = restart the ESP
+
 Root_Path/setGeneral/AirSens_active
 Value (0 - 1)
 0 = switch off the gas quality sensor
@@ -55,5 +59,6 @@ Ratio of the manually PWM mode
 Root_Path/TempSensors/"Name of the Sensor"
 --> Value of the temperature in °C
 
-Root_Path/General_Information/
+Root_Path/General_Information/realOutput
+--> Outputs as 8bit unsigned integer with the real output of all 8 ports (includes the current state of both relais)
 

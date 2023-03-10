@@ -6,14 +6,14 @@
 // enum {dtYear, dtMonth, dtDay}; //Tag = 2; Monat = 1; Jahr = 0
 const String WeekDays[7]={"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"};
 // //Allgemeine Definitionen
-enum {subwl = 27767, subnw = 30574, subcn = 20035, subpd = 17488, subps = 21328, sublf = 17996, sublm = 19788, submq = 29037, subPS = 21328, subSD = 17491, subSS = 21331, subOS = 21327, subAS = 21313}; //Zuordnung der Submit-Bereiche einer Ganzzahl
+enum {subwl = 27767, subnw = 30574, subcn = 20035, subpd = 17488, subps = 21328, sublf = 17996, sublm = 19788, submq = 29037, subPS = 21328, subSD = 17491, subSS = 21331, subOS = 21327, subAS = 21313, subWV = 22103}; //Zuordnung der Submit-Bereiche einer Ganzzahl
 enum {touchUp_wsgn = 33, touchDown_gn = 32, touchRight_wsbr = 15, touchLeft_br = 4, touchF1_bl = 13, touchF2_wsbl = 12, touchF3_or = 14, touchF4_wsor = 27, RGB_Red = 22, RGB_Green = 16, RGB_Blue = 17, Display_Beleuchtung = 21};
 enum {indexAGM = 0, indexLED = 1, indexProgStart = 2, indexNWK = 3};
 enum {NW_WiFi_AP = 0x01, NW_StaticIP = 0x02, NW_EthernetActive = 0x04, NW_MQTTActive = 0x08, NW_MQTTSecure = 0x10}; //Enum for NWConfig
 const String Un_Checked[2]{"","Checked"};
 const String varSelected[2]{"", " selected=\"\""};
 // const String De_Aktiviert[2]{"Deaktiviert","Aktiviert"};
-const String Ein_Aus[2]{"Aus","Ein"};
+const String Ein_Aus[3]{"Aus","Ein","---"};
 
 
 
@@ -25,7 +25,7 @@ const char html_header[] PROGMEM = R"rawliteral(
  <meta name="viewport" content="width=device-width, initial-scale=1", charset="UTF-8">
 </head>
 <body bgcolor=\"#BBFFFF\">
-Uhrzeit: %s | Datum: %s, %02d.%02d.%d | Status: 
+Uhrzeit: %s | Datum: %s, %02d.%02d.%d | Status: %u, %X
 <br />
 <hr><h3>
 <a href=\>Startseite</a> | 
@@ -211,7 +211,50 @@ const char html_OPconfig2[] PROGMEM = R"rawliteral(
   </form>
   </TR>
 )rawliteral";
-
+const char html_OPconfig3[] PROGMEM = R"rawliteral(
+%s </TABLE>
+<br />
+</h3><hr>
+<h1>3-Wege-Ventil Einstellungen</h1><hr>
+<form method="post" action="/POST">
+<TABLE> <!-- 'border="1"-->
+  <TR>
+    <TD WIDTH="300" VALIGN="TOP">
+      Kanal "Auf"<br /><br /></TD>
+    <TD WIDTH="200" VALIGN="TOP">
+	  <input name="WV_0" type="number" min="0" max="7" step="1" size="5" value="%u" required="1"><br /><br /></TD>
+  </TR>
+  <TR>
+    <TD VALIGN="TOP">
+      Kanal "Zu"<br /><br /></TD>
+    <TD VALIGN="TOP">
+	  <input name="WV_1" type="number" min="0" max="7" step="1" size="5" value="%u" required="1"><br /><br /></TD>
+  </TR>
+  <TR>
+    <TD VALIGN="TOP">
+      Zykluszeit "Auf" in Sekunden<br /><br /></TD>
+    <TD VALIGN="TOP">
+	  <input name="WV_2" type="number" min="0" max="1000" step="1" size="5" value="%u" required="1"><br /><br /></TD>
+  </TR>
+  <TR>
+    <TD VALIGN="TOP">
+      Zykluszeit "Zu" in Sekunden<br /><br /></TD>
+    <TD VALIGN="TOP">
+	  <input name="WV_3" type="number" min="0" max="1000" step="1" size="5" value="%u" required="1"><br /><br /></TD>
+  </TR>
+  <TR>
+    <TD VALIGN="TOP">
+      Ventilposition (min=0, max=10000)<br /><br /></TD>
+    <TD VALIGN="TOP">
+	  %u<br /><br /></TD>
+  </TR>
+  <TR>
+    <TD VALIGN="TOP">
+      </TD>
+    <TD VALIGN="TOP">
+	  <input type="reset"><input value="Submit" type="submit"></form></TD>
+  </TR>
+)rawliteral";
 
 const char html_NWconfig[] PROGMEM = R"rawliteral(
 <h1>Heizung Zusatzsteuerung NW Einstellungen</h1><hr>
@@ -352,7 +395,7 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
   <TR>
     <TD valign="TOP">
       MQTT Server: </td>
-  <TD>
+    <TD>
       <input name="mqServer" type="text" minlength="7" maxlength="15" size="45" value="%s"><br><br></td>
     <TD valign="TOP">
        </td>
@@ -360,7 +403,7 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
   <TR>
     <td valign="TOP">
       MQTT Port: </td>
-  <TD>
+    <TD>
     <input name="mqPort" type="number" minlength="3" maxlength="5" size="8" value="%u" required="1" pattern="[0-9]{5}"> <br><br></td>
     <TD valign="TOP">
       </td>
@@ -368,7 +411,7 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
   <TR>
     <TD valign="TOP">
       Benutzername: </td>
-  <TD>  
+    <TD>  
     <input name="mqUser" type="text" minlength="6" maxlength="15" size="19" value="%s"><br><br></td>
     <TD valign="TOP">
        </td>
@@ -376,7 +419,7 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
   <TR>
     <TD valign="TOP">
       Passwort: </td>
-  <TD>
+    <TD>
     <input name="mqPassword" type="password" minlength="5" maxlength="60" size="35" value="xxxxxx"><br><br></td>
     <TD valign="TOP">
   </TR>
@@ -388,9 +431,15 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
     <TD valign="TOP">
   </TR>
   <TR>
+    <TD VALIGN="TOP">
+      MQTT secure On/Off: </TD>
+    <TD VALIGN="TOP">
+    <input name="mqMQTTsecureOn" value="" type="checkbox" %s> <br /><br /></TD>
+  </TR>
+  <TR>
     <TD valign="TOP">
       Zertifikat: </td>
-  <TD>
+    <TD>
     <input name="mqFPrint" type="password" minlength="8" maxlength="60" size="35" value="xxxxxx"><br><br></td>
     <TD valign="TOP">
   </TR>
