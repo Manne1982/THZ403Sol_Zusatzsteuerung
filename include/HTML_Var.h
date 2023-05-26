@@ -1,5 +1,10 @@
+#ifndef HTML_Var
+#define HTML_Var
+
+
 #include <pgmspace.h>
 #include <Arduino.h>
+
 
 //Definitionen fuer Datum und Uhrzeit
 // enum {clh, clmin}; //clh ist 0 fuer Uhrzeit-Stunden, clmin ist 1 fuer Uhrzeit Minuten
@@ -7,9 +12,7 @@
 const String WeekDays[7]={"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"};
 // //Allgemeine Definitionen
 enum {subwl = 27767, subnw = 30574, subcn = 20035, subpd = 17488, subps = 21328, sublf = 17996, sublm = 19788, submq = 29037, subPS = 21328, subSD = 17491, subSS = 21331, subOS = 21327, subAS = 21313, subWV = 22103}; //Zuordnung der Submit-Bereiche einer Ganzzahl
-enum {touchUp_wsgn = 33, touchDown_gn = 32, touchRight_wsbr = 15, touchLeft_br = 4, touchF1_bl = 13, touchF2_wsbl = 12, touchF3_or = 14, touchF4_wsor = 27, RGB_Red = 22, RGB_Green = 16, RGB_Blue = 17, Display_Beleuchtung = 21};
 enum {indexAGM = 0, indexLED = 1, indexProgStart = 2, indexNWK = 3};
-enum {NW_WiFi_AP = 0x01, NW_StaticIP = 0x02, NW_EthernetActive = 0x04, NW_MQTTActive = 0x08, NW_MQTTSecure = 0x10}; //Enum for NWConfig
 const String Un_Checked[2]{"","Checked"};
 const String varSelected[2]{"", " selected=\"\""};
 // const String De_Aktiviert[2]{"Deaktiviert","Aktiviert"};
@@ -452,3 +455,5 @@ const char html_NWconfig[] PROGMEM = R"rawliteral(
 </body>
 </html>
 )rawliteral";
+
+#endif

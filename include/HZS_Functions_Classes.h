@@ -13,6 +13,9 @@
 #define AirSensOnOff D8
 #define AirSensAnalogPort A0
 
+enum {NW_WiFi_AP = 0x01, NW_StaticIP = 0x02, NW_EthernetActive = 0x04, NW_MQTTActive = 0x08, NW_MQTTSecure = 0x10}; //Enum for NWConfig
+
+
 struct NWConfig {
   //Einstellungen NW-Einstellungen WLAN
   uint16 NW_Flags = 1; //See Enum NW_...
