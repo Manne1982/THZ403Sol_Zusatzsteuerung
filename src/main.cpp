@@ -154,6 +154,20 @@ void loop(void) {
     Break_60s = millis() + 60000;
     MQTT_sendMessage((MQTTSendRoot[3]+"WLAN-Status").c_str(), WiFi.status());
     MQTT_sendMessage((MQTTSendRoot[3]+"WLAN-Verbindung").c_str(), WiFi.RSSI());
+    uint16_t TempPort = mcp[MCPOutput].readGPIOAB();
+    MQTT_sendMessage("MCP_Output_is", TempPort);
+    MQTT_sendMessage("MCP_Output_target", Output_Values.Outputstates);
+    if(TempPort!=(Output_Values.Outputstates))
+    {
+      String TempText;
+      TempText += "Differenz Ausgang Port AB soll zu ist erkannt: Soll ";
+      TempText += IntToStr(Output_Values.Outputstates);
+      TempText += ", Ist ";
+      TempText += IntToStr(TempPort);
+      MQTT_SendFailureText(TempText);
+      MCPinit(mcp, MCPState);
+      mcp[MCPOutput].writeGPIOAB(Output_Values.Outputstates);
+    }
   }
 
   if(millis()>Break_10s)
@@ -172,6 +186,7 @@ void loop(void) {
       Serial.print(" ");
       Serial.println(Ethernet.localIP());
     #endif
+
   }
   if(millis()>Break_s)
   {

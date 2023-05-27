@@ -33,7 +33,7 @@ EthernetClient * e_client = 0;
 WiFiClient * wifiClient;
 PubSubClient * MQTTclient = 0;
 unsigned long lastMQTTInit = 0;
-String MQTTSubscribeRoot[3] = {"/setOutput/", "/setGeneral/", "/setOutputPWM/"}; //{"/setOutput/", "/General/", "/setOutputPWM/"}
+String MQTTSubscribeRoot[3] = {"/setOutput/", "/setGeneral/", "/setOutputPWM/"}; //{"/setOutput/", "/setGeneral/", "/setOutputPWM/"}
 String MQTTSendRoot[7] = {"Input_PWM_Value/", "Input_direct/", "Output_PWM_Value/", "General_Information/", "TempSensors/", "AirQuality/"}; //{"Input_PWM_Value/", "Input_direct/", "Output_PWM_Value/", "General_Information/", "TempSensors/", "AirQuality/"}
 //Temperature sensors
 const uint8 MaxSensors = 15; 

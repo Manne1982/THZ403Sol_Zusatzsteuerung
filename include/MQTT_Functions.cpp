@@ -78,7 +78,6 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
   const String TempTopic = topic;
   String Value = (char*) payload;
   Value = Value.substring(0, length);
-  uint8 TempPort = 0;
   
   if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[0].length()))==MQTTSubscribeRoot[0])
   {
@@ -89,19 +88,6 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length)
       return;
     }
     SetOutput(OutputIndex, Value.toInt(), &Output_Values, mcp, MCPState);
-    TempPort = mcp[MCPOutput].readGPIOA();
-    if(TempPort!=(Output_Values.Outputstates&0x00FF))
-    {
-      String TempText = topic;
-      TempText += " -> Differenz Ausgang Port A soll zu ist erkannt: Soll ";
-      TempText += IntToStr(Output_Values.Outputstates&0x00FF);
-      TempText += ", Ist ";
-      TempText += IntToStr(TempPort);
-      MQTT_SendFailureText(TempText);
-      MCPinit(mcp, MCPState);
-      DO_new_Init(mcp, &Output_Values, MCPState);
-      //mcp[MCPOutput].writeGPIOAB(Output_Values.Outputstates);
-    }
   }
   else if(TempTopic.substring(strlen(varConfig.MQTT_rootpath), (strlen(varConfig.MQTT_rootpath) + MQTTSubscribeRoot[1].length()))==MQTTSubscribeRoot[1])
   {

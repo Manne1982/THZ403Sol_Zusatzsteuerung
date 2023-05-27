@@ -302,7 +302,7 @@ uint8 MCPinit(Adafruit_MCP23X17 * MCP, int * MCPStates)
 {
   MCPStates[MCPOutput] = MCPSetup(&MCP[MCPOutput], MCPPort0);
   MCPStates[MCPInput] = MCPSetup(&MCP[MCPInput], MCPPort1);
-  MCP[MCPOutput].writeGPIOAB(0x00FF); //Set all outputs on High to put off the relaises
+//  MCP[MCPOutput].writeGPIOAB(0x00FF); //Set all outputs on High to put off the relaises
   for(int i =0; i <16; i++)
   {
     if(i<8)
@@ -519,14 +519,14 @@ bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _In
   }
   return anyChange;
 }
-void DO_new_Init(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values * _Output, int * _MCPStates)
+/*void DO_new_Init(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values * _Output, int * _MCPStates)
 {
   for(int i = 0; i < 8; i++)
   {
     setSSR(_MCP, i, (uint8)(_Output->Outputstates&(1<<(i+8))/(1<<(i+8))), _MCPStates);
     setRelaisManuAuto(_MCP, i, (uint8)(_Output->Outputstates&(1<<i)/(1<<i)), _MCPStates);
   }
-}
+}*/
 void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * _MCPStates)
 {
   if(_MCPStates[MCPOutput] != 1)

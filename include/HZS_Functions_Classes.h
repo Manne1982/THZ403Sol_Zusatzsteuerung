@@ -135,7 +135,7 @@ void InitOutputStates(Adafruit_MCP23X17 * MCP, digital_Output * Config, int * MC
 void SetOutput(int OutputIndex, int Value, digital_Output_current_Values * _Output, Adafruit_MCP23X17 * _MCP, int * MCPStates);
 bool readDigitalInputs_SetOutputIfAutoSSRMode(int Interrupt, digital_Input * _Inputs, Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output, int * MCPStates);
 void updateOutputPWM(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values* _Output, int * MCPStates);
-void DO_new_Init(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values * _Output, int * _MCPStates);
+//void DO_new_Init(Adafruit_MCP23X17 * _MCP, digital_Output_current_Values * _Output, int * _MCPStates);
 void setRelaisManuAuto(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 Manu, int * MCPStates);
 void setSSR(Adafruit_MCP23X17 * _MCP, uint8 OutputIndex, uint8 On_Off, int * MCPStates);
 uint8 getRealOutput(digital_Output_current_Values * _Output_Values, digital_Input * _Inputs);
