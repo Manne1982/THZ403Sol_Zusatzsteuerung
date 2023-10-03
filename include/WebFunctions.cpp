@@ -14,7 +14,7 @@ void WebserverRoot(AsyncWebServerRequest *request)
 {
   char *Header_neu = new char[(strlen(html_header) + 50)];
   char *Body_neu = new char[(strlen(html_NWconfig)+750)];
-  char *HTMLString = new char[(strlen(html_header) + 50)+(strlen(html_NWconfig)+750)];
+  char * HTMLString = new char[(strlen(html_header) + 50)+(strlen(html_NWconfig)+750)];
   //Vorbereitung Datum
   unsigned long long epochTime = timeClient->getEpochTime();
   struct tm *ptm = gmtime((time_t *)&epochTime);
@@ -34,69 +34,73 @@ void WebserverRoot(AsyncWebServerRequest *request)
               varConfig.NW_NTPServer, pntSelected[0], pntSelected[1], pntSelected[2], pntSelected[3], pntSelected[4], 
               Un_Checked[(varConfig.NW_Flags & NW_MQTTActive)/NW_MQTTActive].c_str(), varConfig.MQTT_Server, varConfig.MQTT_Port, varConfig.MQTT_Username, varConfig.MQTT_rootpath, Un_Checked[(varConfig.NW_Flags & NW_MQTTSecure)/NW_MQTTSecure].c_str());
   sprintf(HTMLString, "%s%s", Header_neu, Body_neu);
-//  request->send(200, "text/html", HTMLString);
-
-  AsyncBasicResponse *response = new AsyncBasicResponse(200, "text/html", HTMLString);
-  request->send(response);
-
-  delete[] HTMLString;
   delete[] Body_neu;
   delete[] Header_neu;
+  request->send_P(200, "text/html", HTMLString);
+  delete[] HTMLString;
 }
 void WebserverSensors(AsyncWebServerRequest *request)
 {
   int countSensors = SensorPort1.GetSensorCount() + SensorPort2.GetSensorCount();
   TempSensor * MissingSensors[MaxSensors];
   uint8 countMissingSensors = FindMissingSensors(&SensorPort1, &SensorPort2, MissingSensors, TempSensors, MaxSensors);
-  uint16 StringLen = (strlen(html_header) + 50)+strlen(html_SEconfig1)+(countSensors * (strlen(html_SEconfig2) + 120))+strlen(html_SEconfig3);
-  StringLen += ((strlen(html_SEconfig4)+100)*countMissingSensors) + strlen(html_OPSEfooter);
-  char *HTMLString = new char[StringLen];
+  const uint16 StringLen = (strlen(html_header) + 50)+strlen(html_SEconfig1)+(countSensors * (strlen(html_SEconfig2) + 120))+strlen(html_SEconfig3) + ((strlen(html_SEconfig4)+100)*countMissingSensors) + strlen(html_OPSEfooter);
+  char *HTMLString1 = new char[StringLen];
   char *HTMLString2 = new char[StringLen];
+  char **HTMLString = new char*[2];
+  HTMLString[0]= HTMLString1;
+  HTMLString[1]= HTMLString2;
   //Vorbereitung Datum 
   unsigned long long epochTime = timeClient->getEpochTime();
   struct tm *ptm = gmtime((time_t *)&epochTime);
   int monthDay = ptm->tm_mday;
   int currentMonth = ptm->tm_mon + 1;
   int currentYear = ptm->tm_year + 1900;
-  sprintf(HTMLString, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear, Output_Values.realValue, Output_Values.Outputstates);
-  sprintf(HTMLString2, html_SEconfig1, HTMLString, Ein_Aus[AirSensValues->getSensorState()].c_str(), AirSensValues->getOnTime_s(), AirSensValues->readLPG(), AirSensValues->readCO(), 
+  sprintf(HTMLString[0], html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear, Output_Values.realValue, Output_Values.Outputstates);
+  sprintf(HTMLString[1], html_SEconfig1, HTMLString[0], Ein_Aus[AirSensValues->getSensorState()].c_str(), AirSensValues->getOnTime_s(), AirSensValues->readLPG(), AirSensValues->readCO(), 
                   AirSensValues->readSMOKE(), AirSensValues->getHWValue());
   for(int i = 0; i < SensorPort1.GetSensorCount(); i++)
   {
-    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort1.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort1.GetSensorIndex(i)->getTempC(), 1, 
+    sprintf(HTMLString[(i%2)], html_SEconfig2, HTMLString[((i+1)%2)], SensorPort1.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort1.GetSensorIndex(i)->getTempC(), 1, 
                   SensorPort1.GetSensorIndex(i)->getAddressUINT64(), SensorPort1.GetSensorIndex(i)->getName().c_str(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), 
                   SensorPort1.GetSensorIndex(i)->getOffset(), 1, SensorPort1.GetSensorIndex(i)->getAddressUINT64(), 
                   FindTempSensor(TempSensors, MaxSensors, SensorPort1.GetSensorIndex(i)->getAddressUINT64())->SensorState);
-    strcpy(HTMLString2, HTMLString);
   }
+  sprintf(HTMLString[(SensorPort1.GetSensorCount()%2)], "%s", HTMLString[((SensorPort1.GetSensorCount()+1)%2)]);
   for(int i = 0; i < (SensorPort2.GetSensorCount()); i++)
   {
-    sprintf(HTMLString, html_SEconfig2, HTMLString2, SensorPort2.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort2.GetSensorIndex(i)->getTempC(), 2, 
+    sprintf(HTMLString[(i%2)], html_SEconfig2, HTMLString[((i+1)%2)], SensorPort2.GetSensorIndex(i)->getAddressHEX().c_str(), SensorPort2.GetSensorIndex(i)->getTempC(), 2, 
                   SensorPort2.GetSensorIndex(i)->getAddressUINT64(), SensorPort2.GetSensorIndex(i)->getName().c_str(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(), 
                   SensorPort2.GetSensorIndex(i)->getOffset(), 2, SensorPort2.GetSensorIndex(i)->getAddressUINT64(),
                   FindTempSensor(TempSensors, MaxSensors, SensorPort2.GetSensorIndex(i)->getAddressUINT64())->SensorState);
-    strcpy(HTMLString2, HTMLString);
   }
-  sprintf(HTMLString, html_SEconfig3, HTMLString2);
+  sprintf(HTMLString[(SensorPort2.GetSensorCount()%2)], "%s", HTMLString[((SensorPort2.GetSensorCount()+1)%2)]);
+  sprintf(HTMLString[1], html_SEconfig3, HTMLString[0]);
   for(int i = 0; i < countMissingSensors; i++)
   {
-    sprintf(HTMLString2, html_SEconfig4, HTMLString, convertUINT64toHEXstr(&MissingSensors[i]->Address).c_str(), MissingSensors[i]->Name, MissingSensors[i]->Offset, 
+    sprintf(HTMLString[(i%2)], html_SEconfig4, HTMLString[((i+1)%2)], convertUINT64toHEXstr(&MissingSensors[i]->Address).c_str(), MissingSensors[i]->Name, MissingSensors[i]->Offset, 
                   MissingSensors[i]->SensorState, MissingSensors[i]->Address);
-    strcpy(HTMLString, HTMLString2);  
   }
-  sprintf(HTMLString2, html_OPSEfooter, HTMLString);
-  AsyncBasicResponse *response = new AsyncBasicResponse(200, "text/html", HTMLString2);
-  request->send(response);
+  sprintf(HTMLString[(countMissingSensors%2)], "%s", HTMLString[((countMissingSensors+1)%2)]);
+  sprintf(HTMLString[0], "%s%s", HTMLString[1], html_OPSEfooter);
+  request->send_P(200, "text/html", HTMLString[0]);
 
-//  request->send(200, "text/html", HTMLString2); //at big sites >6400 characters not functional
-  delete[] HTMLString;
+//  AsyncBasicResponse *response = new AsyncBasicResponse(200, "text/html", strHTMLString);
+//  AsyncWebServerResponse *response = new AsyncBasicResponse(200, "text/html", strHTMLString);
+//  request->send(response);
+
+  delete[] HTMLString1;
   delete[] HTMLString2;
+  delete[] HTMLString;
 }
 void WebserverOutput(AsyncWebServerRequest *request)
 {
   uint16 StringLen = (strlen(html_header) + 50)+strlen(html_OPconfig1)+(8 * (strlen(html_OPconfig2) + 100))+ strlen(html_OPconfig1) + 20 + strlen(html_OPSEfooter);
-  char *HTMLString = new char[StringLen];
+  char *HTMLString1 = new char[StringLen];
   char *HTMLString2 = new char[StringLen];
+  char **HTMLString = new char*[2];
+  HTMLString[0]= HTMLString1;
+  HTMLString[1]= HTMLString2;
   //Vorbereitung Datum 
   unsigned long long epochTime = timeClient->getEpochTime();
   struct tm *ptm = gmtime((time_t *)&epochTime);
@@ -104,25 +108,25 @@ void WebserverOutput(AsyncWebServerRequest *request)
   int currentMonth = ptm->tm_mon + 1;
   int currentYear = ptm->tm_year + 1900;
   int TempCurrentOutputState = 0;
-  sprintf(HTMLString, html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear, Output_Values.realValue, Output_Values.Outputstates);
-  sprintf(HTMLString2, "%s%s", HTMLString, html_OPconfig1);
+  sprintf(HTMLString[0], html_header, timeClient->getFormattedTime().c_str(), WeekDays[timeClient->getDay()].c_str(), monthDay, currentMonth, currentYear, Output_Values.realValue, Output_Values.Outputstates);
+  sprintf(HTMLString[1], "%s%s", HTMLString[0], html_OPconfig1);
   for(int i = 0; i < 8; i++)
   {
     TempCurrentOutputState = (~Output_Values.Outputstates &((uint16) 1<<(i+8)))/((uint16)1<<(i+8)); //Manuel On or Off
     TempCurrentOutputState = (Output_Values.Outputstates &((uint16) 1<<i))?2:TempCurrentOutputState; //Auto or Manuell
     TempCurrentOutputState = Output_Values.OutputstatesAutoSSRelais&((uint8) 1<<i)?3:TempCurrentOutputState; //Auto over Solid state relais
     TempCurrentOutputState = Output_Values.PWM_Manu_activ&((uint8) 1<<i)?4:TempCurrentOutputState; //Manu PWM-Mode
-    sprintf(HTMLString, html_OPconfig2, HTMLString2, i, i, OutputsBasicSettings[i].Name, TempCurrentOutputState, Inputs.OnTimeRatio[7-i], i, OutputsBasicSettings[i].StartValue, i, 
+    sprintf(HTMLString[(i%2)], html_OPconfig2, HTMLString[((i+1)%2)], i, i, OutputsBasicSettings[i].Name, TempCurrentOutputState, Inputs.OnTimeRatio[7-i], i, OutputsBasicSettings[i].StartValue, i, 
                   Un_Checked[OutputsBasicSettings[i].MQTTState%2].c_str());
-    strcpy(HTMLString2, HTMLString);
   }
-  sprintf(HTMLString, html_OPconfig3, HTMLString2, ValveHeating->getChannelOpen(), ValveHeating->getChannelClose(), ValveHeating->getCycleTimeOpen(), ValveHeating->getCycleTimeClose(), ValveHeating->getValvePosition());
-  sprintf(HTMLString2, html_OPSEfooter, HTMLString);
-  AsyncBasicResponse *response = new AsyncBasicResponse(200, "text/html", HTMLString2);
-  request->send(response);
-//  request->send(200, "text/html", HTMLString2);
-  delete[] HTMLString;
+  sprintf(HTMLString[0], html_OPconfig3, HTMLString[1], ValveHeating->getChannelOpen(), ValveHeating->getChannelClose(), ValveHeating->getCycleTimeOpen(), ValveHeating->getCycleTimeClose(), ValveHeating->getValvePosition());
+//  AsyncBasicResponse *response = new AsyncBasicResponse(200, "text/html", HTMLString2);
+//  request->send(response);
+  sprintf(HTMLString[1], "%s%s", HTMLString[0], html_OPSEfooter);
+  request->send_P(200, "text/html", HTMLString[1]);
+  delete[] HTMLString1;
   delete[] HTMLString2;
+  delete[] HTMLString;
 }
 void WebserverPOST(AsyncWebServerRequest *request)
 {

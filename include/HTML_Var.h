@@ -19,7 +19,6 @@ const String varSelected[2]{"", " selected=\"\""};
 const String Ein_Aus[3]{"Aus","Ein","---"};
 
 
-
 const char html_header[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML>
 <html>
@@ -106,7 +105,7 @@ const char html_SEconfig1[] PROGMEM = R"rawliteral(
 )rawliteral";
 
 const char html_SEconfig2[] PROGMEM = R"rawliteral(
- %s
+%s
  <TR>
  <form method="post" action="/POST">
  <TD VALIGN="TOP">
@@ -144,7 +143,7 @@ const char html_SEconfig3[] PROGMEM = R"rawliteral(
  </TR>
 )rawliteral";
 const char html_SEconfig4[] PROGMEM = R"rawliteral(
- %s
+%s
  <TR>
  <form method="post" action="/POST">
  <TD VALIGN="TOP">
@@ -161,7 +160,6 @@ const char html_SEconfig4[] PROGMEM = R"rawliteral(
  </TR>
 )rawliteral";
 const char html_OPSEfooter[] PROGMEM = R"rawliteral(
-%s
 </TABLE>
 <br />
 </body>
@@ -195,7 +193,8 @@ const char html_OPconfig1[] PROGMEM = R"rawliteral(
   </TR>
 )rawliteral";
 const char html_OPconfig2[] PROGMEM = R"rawliteral(
-%s  <TR>
+%s
+  <TR>
   <form method="post" action="/POST">
     <TD VALIGN="TOP">
 	  %d</TD>
@@ -215,7 +214,8 @@ const char html_OPconfig2[] PROGMEM = R"rawliteral(
   </TR>
 )rawliteral";
 const char html_OPconfig3[] PROGMEM = R"rawliteral(
-%s </TABLE>
+%s
+</TABLE>
 <br />
 </h3><hr>
 <h1>3-Wege-Ventil Einstellungen</h1><hr>
